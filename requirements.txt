@@ -1,0 +1,30 @@
+# Prod bog'liqliklari. Versiyalar venv'da testlar (49 passed) o'tgan holatdan olingan.
+# Dev/test uchun: pip install -r requirements-dev.txt
+
+# --- Django / API ---
+Django==6.0.7
+djangorestframework==3.17.1
+djangorestframework_simplejwt==5.5.1
+django-jazzmin==3.0.5
+drf-spectacular==0.28.0      # Swagger / OpenAPI (/api/docs/)
+whitenoise==6.9.0            # admin static fayllari (gunicorn ortida, alohida nginx'siz)
+gunicorn==23.0.0
+psycopg2-binary==2.9.12
+redis==6.4.0                 # CACHES: django.core.cache.backends.redis (prodda REDIS_URL majburiy)
+tzdata==2026.3               # ZoneInfo("Asia/Tashkent") — slim image'da tizim tzdata yo'q
+
+# --- Tashqi servislar ---
+requests==2.34.2             # Eskiz SMS
+confluent-kafka==2.15.0      # outbox publisher, consumer'lar, readiness
+grpcio==1.83.0               # notification gRPC klienti
+protobuf==7.35.1
+elasticsearch==9.4.1
+clickhouse-connect==1.6.0
+
+# --- Kuzatuv ---
+prometheus_client==0.26.0
+opentelemetry-api==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp==1.44.0
+opentelemetry-instrumentation-django==0.65b0
+opentelemetry-instrumentation-psycopg2==0.65b0

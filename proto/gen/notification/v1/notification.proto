@@ -1,0 +1,47 @@
+// Bildirishnoma servisining kontrakti (Faza 2).
+//
+// Bu fayl — MODULLAR ORASIDAGI RASMIY CHEGARA. api/catalog/services.py dagi
+// DTO dataclass'lar bilan bir xil g'oya: chaqiruvchi faqat shu yerda
+// kelishilgan maydonlarni ko'radi, boshqasiga yo'l yo'q.
+//
+// Stub'larni qayta generatsiya qilish:
+//   python -m grpc_tools.protoc -I proto \
+//       --python_out=gen --grpc_python_out=gen --pyi_out=gen \
+//       proto/notification/v1/notification.proto
+
+syntax = "proto3";
+
+package notification.v1;
+
+// Yuborish kanali.
+//
+// Nega 0 qiymati UNSPECIFIED: proto3 da 0 — default qiymat va uni
+// "berilmagan" dan ajratib bo'lmaydi. Agar CHANNEL_SMS = 0 bo'lsa,
+// maydonni umuman to'ldirmagan klient bexosdan SMS yuborib qo'yadi.
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+  CHANNEL_SMS = 1;
+  CHANNEL_PUSH = 2;
+}
+
+message SendRequest {
+  // Idempotentlik kaliti. Xuddi shu kalit bilan takroriy so'rov kelsa,
+  // servis YANGI xabar yubormaydi — avvalgi natijani qaytaradi.
+  // Tarmoq javobni yo'qotganda qayta urinish normal hol, shuning uchun
+  // bu maydon majburiy.
+  string idempotency_key = 1;
+
+  Channel channel = 2;
+  string recipient = 3;   // telefon raqami yoki push token
+  string template = 4;    // "booking_confirmed" — matn EMAS, shablon nomi
+  map<string, string> params = 5;  // {"number": "MB-260730-A9L6"}
+  string language = 6;    // "uz" | "ru"
+}
+
+message SendResponse {
+  string message_id = 1;  // provayderdagi ID — SmsLog'ga yoziladi
+}
+
+service NotificationService {
+  rpc Send(SendRequest) returns (SendResponse);
+}

@@ -1,0 +1,31 @@
+# k8s/booking-migrate-job.yaml — har deploy'dan OLDIN bir marta
+#
+#   kubectl delete job booking-migrate --ignore-not-found
+#   envsubst < k8s/booking-migrate-job.yaml | kubectl apply -f -
+#   kubectl wait --for=condition=complete job/booking-migrate --timeout=300s
+#   envsubst < k8s/booking-service.yaml | kubectl apply -f -
+#
+# NEGA initContainer EMAS: Deployment'da 3 ta pod bir vaqtda ko'tariladi va
+# uchala initContainer ham bir vaqtda `migrate` qilardi. Alohida Job — bitta
+# nusxa, va u tugamaguncha yangi kod ishga tushmaydi.
+#
+# ⚠️ Migratsiyalar ORQAGA MOS bo'lishi kerak: rolling update paytida eski
+# podlar yangi sxema bilan bir necha soniya ishlaydi (ustun o'chirish — ikki deploy'da).
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: booking-migrate
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: registry.example.com/medbron/booking:${GIT_SHA}
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - secretRef: {name: booking-secrets}
+            - configMapRef: {name: booking-config}

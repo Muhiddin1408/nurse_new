@@ -1,0 +1,91 @@
+# CI — Bosqich 0 "tayyor" mezonlari avtomat tekshiruvi.
+#
+#   1. Payme kontrakt to'plami (pytest -m payme_sandbox)   — B2
+#   2. To'liq test to'plami PostgreSQL'da, jumladan
+#      100 tomonli parallel `hold_slot` testi              — E17
+#   3. Migratsiyalar to'liqligi
+#   4. Xavfsizlik (A13): bandit (SAST), pip-audit (bog'liqliklar),
+#      gitleaks (sirlar), `check --deploy` prod sozlamalari bilan
+#
+# Loyiha hali git repo emas — repo yaratilgach bu fayl GitHub Actions'da o'z-o'zidan ishlaydi.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: medbron
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_DB: medbron
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST: 127.0.0.1
+      DJANGO_DEBUG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+
+      - name: Migratsiyalar to'liq
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Payme kontrakt to'plami (B2)
+        run: pytest -m payme_sandbox
+
+      - name: To'liq to'plam PostgreSQL'da (parallel hold_slot testi bilan)
+        run: pytest
+
+  security:
+    # A13: har push'da. Topilma bo'lsa CI qizil — merge qilinmaydi.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks butun tarixni tekshiradi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+
+      - name: SAST (bandit) — faqat o'rta va yuqori jiddiylik
+        run: bandit -r api apps analytics conf -x "*/tests.py,*/test_*.py,*/migrations/*" -ll
+
+      - name: Bog'liqliklardagi ma'lum zaifliklar (pip-audit)
+        run: pip-audit -r requirements.txt
+
+      - name: Sirlar repo'da emas (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prod sozlamalari (manage.py check --deploy)
+        env:
+          DJANGO_DEBUG: "0"
+          DJANGO_SECRET_KEY: ci-only-${{ github.run_id }}-not-a-real-secret-key-0123456789abcdef
+          DJANGO_ALLOWED_HOSTS: api.medbron.uz
+          POSTGRES_DB: medbron
+          REDIS_URL: redis://localhost:6379/1
+          PAYME_SECRET_KEY: ci-dummy
+          ANALYTICS_SALT: ci-dummy
+          ADMIN_URL: ops-ci/
+          ADMIN_ALLOWED_IPS: 10.0.0.0/8
+          SMS_PROVIDER: eskiz
+          ESKIZ_EMAIL: ci@example.com
+          ESKIZ_PASSWORD: ci-dummy
+        run: python manage.py check --deploy --tag security --fail-level WARNING

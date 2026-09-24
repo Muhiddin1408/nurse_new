@@ -1,0 +1,104 @@
+# k8s/booking-workers.yaml — uzoq yashaydigan worker'lar
+#
+# HTTP yo'q, shuning uchun Service/probe yo'q. Har biri SIGTERM'ni ushlaydi
+# (api/events/runner.py) — terminationGracePeriodSeconds ichida toza to'xtaydi.
+#
+# replicas:
+#   outbox-publisher     2 — `SELECT ... FOR UPDATE SKIP LOCKED` (E1): nusxalar bir xil
+#                           qatorni olmaydi; bittasi o'lsa ikkinchisi davom etadi
+#   notification-consumer 2 — ProcessedEvent takroriy SMS'dan himoya qiladi
+#   search-projector     1 — ES upsert idempotent, ko'paytirish mumkin
+#   analytics-consumer   1 — partiyalab yozadi; ko'paytirish = ko'proq kichik INSERT
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-outbox-publisher
+spec:
+  replicas: 2                  # E1: yagona nuqta emas — SKIP LOCKED bilan xavfsiz
+  strategy: {type: RollingUpdate}
+  selector: {matchLabels: {app: booking-outbox-publisher}}
+  template:
+    metadata: {labels: {app: booking-outbox-publisher}}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: registry.example.com/medbron/booking:${GIT_SHA}
+          command: ["python", "manage.py", "run_outbox_publisher"]
+          resources:
+            requests: {cpu: "100m", memory: "128Mi"}
+            limits: {cpu: "500m", memory: "256Mi"}
+          envFrom:
+            - secretRef: {name: booking-secrets}
+            - configMapRef: {name: booking-config}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-consumer
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: notification-consumer}}
+  template:
+    metadata: {labels: {app: notification-consumer}}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: registry.example.com/medbron/booking:${GIT_SHA}
+          command: ["python", "manage.py", "run_notification_consumer"]
+          resources:
+            requests: {cpu: "100m", memory: "128Mi"}
+            limits: {cpu: "500m", memory: "256Mi"}
+          envFrom:
+            - secretRef: {name: booking-secrets}
+            - configMapRef: {name: booking-config}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-projector
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: search-projector}}
+  template:
+    metadata: {labels: {app: search-projector}}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: worker
+          image: registry.example.com/medbron/booking:${GIT_SHA}
+          command: ["python", "manage.py", "run_search_projector"]
+          resources:
+            requests: {cpu: "100m", memory: "128Mi"}
+            limits: {cpu: "500m", memory: "256Mi"}
+          envFrom:
+            - secretRef: {name: booking-secrets}
+            - configMapRef: {name: booking-config}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-consumer
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: analytics-consumer}}
+  template:
+    metadata: {labels: {app: analytics-consumer}}
+    spec:
+      terminationGracePeriodSeconds: 30   # FLUSH_INTERVAL (5s) + INSERT uchun yetarli
+      containers:
+        - name: worker
+          image: registry.example.com/medbron/booking:${GIT_SHA}
+          command: ["python", "manage.py", "run_analytics_consumer", "--init-schema"]
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits: {cpu: "500m", memory: "512Mi"}
+          envFrom:
+            - secretRef: {name: booking-secrets}
+            - configMapRef: {name: booking-config}

@@ -1,0 +1,164 @@
+# k8s/booking-service.yaml — Faza 7
+#
+# Bitta servisning to'liq Kubernetes ta'rifi. Qolgan servislar (catalog,
+# payment, notification) shu qolipni takrorlaydi.
+#
+# Bu yerda TO'RTTA obyekt: Deployment, Service, HPA, va probe'lar.
+# Har birining nima uchun kerakligi izohda.
+
+---
+# ===========================================================================
+# 1. Deployment — konteynerlar qanday ishga tushadi
+# ===========================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-service
+  labels:
+    app: booking-service
+spec:
+  replicas: 3  # 3 nusxa — biri o'lsa qolgan 2 tasi trafikni ko'taradi
+  selector:
+    matchLabels:
+      app: booking-service
+
+  # ╔══════════════════════════════════════════════════════════════════════╗
+  # ║  ZERO-DOWNTIME DEPLOY (rolling update) shu blokda.                   ║
+  # ║  maxUnavailable: 0 -> deploy paytida BIRORTA HAM eski pod o'chmaydi,  ║
+  # ║  yangi pod TAYYOR bo'lgunga qadar. maxSurge: 1 -> bir vaqtda faqat    ║
+  # ║  bitta qo'shimcha pod ko'tariladi. Natijada trafik hech uzilmaydi.    ║
+  # ╚══════════════════════════════════════════════════════════════════════╝
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  template:
+    metadata:
+      labels:
+        app: booking-service
+    spec:
+      containers:
+        - name: booking
+          image: registry.example.com/medbron/booking:${GIT_SHA}  # tag = commit, "latest" EMAS
+          ports:
+            - containerPort: 8000
+
+          # ⬇ RESURS CHEGARALARI — bularsiz bitta buzuq pod butun node'ni
+          # yeb qo'yishi va qo'shni servislarni o'ldirishi mumkin.
+          resources:
+            requests:              # kafolatlangan minimum (scheduler shu asosda joylashtiradi)
+              cpu: "250m"
+              memory: "256Mi"
+            limits:                # qat'iy shift (bundan oshsa, throttle yoki OOM-kill)
+              cpu: "1000m"
+              memory: "512Mi"
+
+          # ╔════════════════════════════════════════════════════════════════╗
+          # ║  LIVENESS — "tirikmi?" Yiqilsa, Kubernetes podni O'CHIRIB       ║
+          # ║  QAYTA ishga tushiradi. Shuning uchun bu tekshiruv YENGIL       ║
+          # ║  bo'lishi kerak: faqat "jarayon javob beryaptimi", tashqi       ║
+          # ║  bog'liqliklarni TEKSHIRMAYDI. Aks holda Kafka bir soniya       ║
+          # ║  uzilsa, Kubernetes sog'lom podlaringizni qirib tashlaydi.      ║
+          # ╚════════════════════════════════════════════════════════════════╝
+          livenessProbe:
+            httpGet:
+              path: /healthz/live      # faqat "men tirikman" qaytaradi
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+
+          # ╔════════════════════════════════════════════════════════════════╗
+          # ║  READINESS — "hozir so'rov qabul qila olamanmi?" Yiqilsa,       ║
+          # ║  Kubernetes podni O'CHIRMAYDI, faqat unga TRAFIK YUBORMAYDI.    ║
+          # ║  Bu tekshiruv tashqi bog'liqliklarni TEKSHIRADI. Faqat BAZA     ║
+          # ║  503 chiqaradi; Kafka nosozligi javobda "degraded" bo'lib       ║
+          # ║  ko'rinadi, lekin podni trafikdan chiqarmaydi — API Kafka'ga    ║
+          # ║  outbox orqali yozadi, ya'ni unga sinxron bog'liq emas.         ║
+          # ╚════════════════════════════════════════════════════════════════╝
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready     # DB (kritik) + Kafka (ma'lumot uchun)
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 2
+            # ⚠️ MAJBURIY. Default 1s, Kafka metadata so'rovi esa 2s gacha
+            # kutishi mumkin — u holda probe hammasi joyida bo'lsa ham
+            # timeout bo'yicha yiqilar va pod trafikdan chiqib ketardi.
+            # Qoida: timeoutSeconds > ichkaridagi eng uzun tekshiruv.
+            timeoutSeconds: 5
+
+          # ⬇ STARTUP PROBE — sekin ishga tushadigan ilova uchun. U tugamaguncha
+          # liveness ishlamaydi. Django migratsiya + ulanishlarni tekshirish
+          # 30 soniya olsa, liveness uni bexosdan o'ldirmasligi uchun.
+          startupProbe:
+            httpGet:
+              path: /healthz/live
+              port: 8000
+            failureThreshold: 30
+            periodSeconds: 2
+
+          envFrom:
+            - secretRef:
+                name: booking-secrets     # DB parol, JWT kalit — Secret'da, YAML'da EMAS
+            - configMapRef:
+                name: booking-config      # Kafka manzili, log darajasi
+
+---
+# ===========================================================================
+# 2. Service — podlarga barqaror kirish nuqtasi
+# ===========================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+spec:
+  selector:
+    app: booking-service    # shu yorliqli barcha podlarga trafikni taqsimlaydi
+  ports:
+    - port: 80
+      targetPort: 8000
+  type: ClusterIP           # faqat klaster ichida ko'rinadi (tashqariga Ingress chiqaradi)
+
+# ⬆ Bu — Faza 2 dagi "service discovery" muammosining Kubernetes yechimi.
+# Boshqa servislar podlarning o'zgaruvchan IP'sini bilishi shart emas —
+# ular shunchaki "http://booking-service" deb murojaat qiladi, Kubernetes DNS
+# uni tirik podlarga yo'naltiradi.
+
+---
+# ===========================================================================
+# 3. HPA — yuklama ostida avtomatik ko'payish
+# ===========================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: booking-service-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: booking-service
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70   # o'rtacha CPU 70% oshsa, pod qo'shadi
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30   # tez ko'payadi (pik trafikka javob)
+    scaleDown:
+      stabilizationWindowSeconds: 300  # sekin kamayadi (trafik qaytib kelsa deb)
+      # ⬆ Bu assimetriya ataylab: ko'payishni kechiktirmaymiz (mijoz kutmasin),
+      # kamayishni shoshirmaymiz (endigina kamaytirib, yana ko'paytirishга
+      # tushib qolmaslik uchun — "flapping").
+
+# ⚠️ HPA ishlashi uchun klasterda metrics-server o'rnatilgan bo'lishi shart,
+# va yuqoridagi resources.requests belgilangan bo'lishi kerak — HPA foizni
+# aynan requests'ga nisbatan hisoblaydi. requests yo'q bo'lsa, HPA ishlamaydi.

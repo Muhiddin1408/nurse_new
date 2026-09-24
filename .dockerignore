@@ -1,0 +1,17 @@
+venv/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.idea/
+.claude/
+.git/
+db.sqlite3*
+staticfiles/
+*.md
+!LOYIHA_HUJJATI.md
+k8s/
+loadtest/
+.env
+.env.*
+
+private_media/

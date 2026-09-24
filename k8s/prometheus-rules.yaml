@@ -1,0 +1,183 @@
+# Prometheus alert qoidalari — Bosqich 0 (B13, E9).
+#
+# prometheus-operator bilan: kubectl apply -f k8s/prometheus-rules.yaml
+# Operator bo'lmasa: `spec.groups` qismini prometheus `rule_files` ga ko'chiring.
+#
+# "Jim ishlamay qolish" eng xavfli nosozlik: bu qoidalarsiz to'lov to'xtab
+# qolsa ham API sog'lom ko'rinadi.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: medbron-booking-alerts
+  labels:
+    app: booking
+spec:
+  groups:
+    - name: medbron-payments
+      rules:
+        # B13 — ENG MUHIM: to'lov butunlay ishlamayapti
+        - alert: MedbronNoSuccessfulPayments
+          expr: sum(increase(medbron_payment_succeeded_total[1h])) == 0
+            and sum(increase(medbron_payment_checkout_created_total[1h])) > 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "1 soatda birorta ham muvaffaqiyatli to'lov yo'q"
+            description: "Checkout'lar ochilyapti, lekin to'lovlar o'tmayapti. Payme integratsiyasini, PAYME_SECRET_KEY va webhook loglarini (PaymeCallbackLog) tekshiring."
+
+        # B3 fail-safe: pul yechildi, bron tasdiqlanmadi
+        - alert: MedbronPaymentNeedsRefund
+          expr: increase(medbron_payment_refund_required_total[15m]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pul yechilgan, lekin bron tasdiqlanmagan — refund kerak"
+            description: "Payment.needs_refund=True yozuvlarini ko'rib chiqing va mijozga pulni qaytaring."
+
+        # B7 — reconciliation farqi. Maqsad doimiy 0
+        - alert: MedbronReconciliationDiscrepancy
+          expr: increase(medbron_reconciliation_discrepancies_total[1d]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "To'lovlar solishtirishida farq topildi ({{ $labels.type }})"
+            description: "PaymentDiscrepancy(status=open) navbatini ko'rib chiqing. provider_only — pul olingan, xizmat yo'q."
+
+        # B4 — refund qo'lda bajarilishi yoki xato
+        - alert: MedbronRefundNeedsAttention
+          expr: increase(medbron_refunds_total{status=~"failed|manual_required"}[1h]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "Refund qo'lda ko'rib chiqilishi kerak ({{ $labels.status }})"
+
+        - alert: MedbronPaymeErrorsHigh
+          expr: sum(rate(medbron_provider_errors_total{provider="payme"}[10m]))
+            / clamp_min(sum(rate(medbron_payment_webhook_total[10m])), 1e-9) > 0.3
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Payme webhook javoblarining 30% dan ko'pi xato"
+
+        - alert: MedbronSagaCompensationsHigh
+          expr: increase(medbron_saga_compensations_total[1h]) > 20
+          labels:
+            severity: warning
+          annotations:
+            summary: "Soatiga 20 dan ortiq to'lov qaytarilishi"
+
+    # E2 — outbox: "jim ishlamay qolish"ning asosiy signali
+    - name: medbron-outbox
+      rules:
+        - alert: MedbronOutboxLagWarning
+          expr: max(medbron_outbox_lag_seconds) > 60
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Outbox 60 soniyadan ko'p ortda — publisher sekin yoki Kafka muammosi"
+        - alert: MedbronOutboxPublisherDead
+          expr: max(medbron_outbox_lag_seconds) > 300
+          labels:
+            severity: critical
+          annotations:
+            summary: "Outbox 5 daqiqadan ko'p ortda — publisher o'lgan"
+            description: "SMS ketmayapti, analitika va qidiruv eskirmoqda. booking-outbox-publisher podlarini tekshiring."
+        - alert: MedbronOutboxEventsFailed
+          expr: increase(medbron_outbox_failed_total[10m]) > 0 or max(medbron_outbox_failed_current) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "Outbox hodisalari FAILED — hech kimga yetmagan"
+            description: "Sababi OutboxEvent.last_error da. Qayta yuborish: manage.py republish_outbox --since <vaqt>"
+        - alert: MedbronOutboxChainBroken
+          expr: sum(increase(medbron_outbox_published_total[10m])) == 0 and max(medbron_outbox_pending_total) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: "10 daqiqada birorta hodisa yetkazilmadi, navbatda hodisalar bor"
+        # E5
+        - alert: MedbronConsumerPoisonMessages
+          expr: increase(medbron_consumer_poison_total[15m]) > 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.consumer }}: buzuq xabar DLQ ga tushdi"
+            description: "DeadLetterEvent jadvalini ko'ring — odatda producer tomonidagi bug."
+
+    - name: medbron-booking
+      rules:
+        # E9 — expire_bookings ortda qolyapti
+        - alert: MedbronExpireBacklog
+          expr: max(medbron_expire_backlog) > 5000
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Tozalanmagan muddati o'tgan hold'lar 5000 dan ko'p"
+            description: "Slotlar lazy expiry tufayli to'g'ri sotiladi, lekin bron holatlari va SMS kechikmoqda. booking-expire CronJob'ini tekshiring."
+
+    # A14 — OTP: SMS pumping va parol terish hujumi
+    - name: medbron-security
+      rules:
+        - alert: MedbronOtpSpike
+          # Oxirgi soat — o'tgan sutkadagi soatlik o'rtachadan 3 barobar ko'p
+          expr: sum(increase(medbron_otp_requests_total{result="sent"}[1h]))
+            > 3 * (sum(increase(medbron_otp_requests_total{result="sent"}[1d])) / 24) + 50
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "OTP SMS soni keskin oshdi — SMS pumping ehtimoli"
+            description: "Eskiz balansi yonmoqda. medbron_otp_requests_total{result} va IP'lar bo'yicha loglarni tekshiring."
+
+        - alert: MedbronOtpVerifyBruteforce
+          expr: sum(increase(medbron_otp_verify_failed_total{reason="blocked"}[15m])) > 20
+          labels:
+            severity: warning
+          annotations:
+            summary: "Ko'p raqamda OTP tekshiruvi bloklandi — kod terish hujumi ehtimoli"
+
+    # E14 — ma'lumot o'sishi: tozalash ishlayaptimi va jadvallar qancha o'syapti
+    - name: medbron-data-growth
+      rules:
+        - alert: MedbronPurgeStalled
+          # Eng tez o'sadigan jadval bir hafta davomida umuman tozalanmadi.
+          # Bu "o'chirish uchun hech narsa yo'q" degani EMAS: slotlar har kuni
+          # generatsiya qilinadi, ya'ni har kuni eskisi ham paydo bo'ladi.
+          # Nolga tushishi — cron o'lgan degani.
+          expr: sum(increase(medbron_rows_purged_total{table="time_slots"}[7d])) == 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Retention tozalash bir hafta davomida hech narsa o'chirmadi"
+            description: "booking-purge CronJob'ini tekshiring (k8s/booking-cronjobs.yaml). Jadvallar jim o'syapti — docs/MALUMOT_OSISHI.md."
+
+        - alert: MedbronTimeSlotTableLarge
+          # docs/MALUMOT_OSISHI.md 4-bo'limidagi partitioning chegarasi.
+          # Bu shoshilinch emas — bu "rejalashtirish vaqti keldi" signali.
+          expr: max(medbron_table_rows_estimate{table="schedule_timeslot"}) > 10000000
+          for: 1d
+          labels:
+            severity: info
+          annotations:
+            summary: "schedule_timeslot 10 million qatordan oshdi"
+            description: "Partitioning rejasini ko'rib chiqish vaqti: docs/MALUMOT_OSISHI.md, 4-bo'lim. Avval retention muddatini (RETENTION_TIME_SLOTS_DAYS) qisqartirish arzonroq yechim."
+
+    # C15.4 — qidiruv Elasticsearch'siz, degradatsiyada ishlayapti
+    - name: medbron-search
+      rules:
+        - alert: MedbronSearchDegraded
+          # Qidiruv Postgres zaxirasiga tushdi. Mijoz uchun sahifa ishlaydi,
+          # lekin imlo xatosi kechirilmaydi va relevantlik yo'q — ya'ni
+          # konversiya jim pasayadi. Jim fallback'ning butun xavfi shu.
+          expr: sum(rate(medbron_search_requests_total{engine="postgres"}[5m])) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Qidiruv Elasticsearch'siz ishlayapti (Postgres zaxirasi)"
+            description: "ES klasteri va search-projector podlarini tekshiring. Indeks yo'qolgan bo'lsa: python manage.py reindex_doctors."

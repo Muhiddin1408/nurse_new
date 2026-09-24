@@ -1,0 +1,9 @@
+-r requirements.txt
+
+pytest==9.1.1
+pytest-django==4.12.0
+grpcio-tools==1.83.0         # proto/ -> gen/ qayta generatsiya qilish uchun
+
+# A13: CI xavfsizlik tekshiruvlari
+bandit==1.8.6
+pip-audit==2.9.0

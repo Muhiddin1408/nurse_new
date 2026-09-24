@@ -1,0 +1,357 @@
+# k8s/booking-cronjobs.yaml — davriy ishlar
+#
+# Kubernetes'siz muhitda buning o'rniga: python manage.py run_scheduler
+
+---
+# Har daqiqa: to'lanmagan bronlar EXPIRED, muddati o'tgan hold'lar FREE
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-expire
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid        # oldingisi tugamagan bo'lsa yangisi boshlanmaydi
+  startingDeadlineSeconds: 50
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0               # keyingi daqiqada baribir qayta ishlaydi
+      activeDeadlineSeconds: 55
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: expire
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "expire_bookings"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Har daqiqa: navbatdagi refund'lar provayderga (B4)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-refunds
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 50
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 55
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: refunds
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "run_refunds"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Har daqiqa: vaqti kelgan eslatmalar (T-24, T-2) va baholash so'rovlari (C9)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: notifications-scheduler
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 50
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0               # keyingi daqiqada baribir qayta ishlaydi
+      activeDeadlineSeconds: 55
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: scheduler
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "run_notification_scheduler"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Har soat: tugaganiga 24 soatdan oshgan, belgilanmagan qabullar -> completed (C1)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-auto-complete
+spec:
+  schedule: "15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1               # idempotent — qayta urinish xavfsiz
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: auto-complete
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "auto_complete_bookings"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Har kecha 03:00 (Toshkent): kechagi to'lovlarni solishtirish (B7)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-reconcile-payments
+spec:
+  schedule: "0 3 * * *"
+  timeZone: "Asia/Tashkent"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: reconcile
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "reconcile_payments"]
+              resources:
+                requests: {cpu: "100m", memory: "256Mi"}
+                limits: {cpu: "1000m", memory: "512Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Dushanba 06:00 (Toshkent): o'tgan hafta uchun shifokor payout'lari (D6)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: payment-build-payouts
+spec:
+  schedule: "0 6 * * 1"
+  timeZone: "Asia/Tashkent"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 8
+  failedJobsHistoryLimit: 8
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: payouts
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "build_payouts"]
+              resources:
+                requests: {cpu: "100m", memory: "256Mi"}
+                limits: {cpu: "1000m", memory: "512Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Har kuni 08:00 (Toshkent): shifokorlarga bugungi qabullar xulosasi (D9)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: notifications-doctor-daily-summary
+spec:
+  schedule: "0 8 * * *"
+  timeZone: "Asia/Tashkent"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: digest
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "send_doctor_daily_summary"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Har kuni 09:00 (Toshkent): litsenziya muddati — eslatma va avtomatik to'xtatish (D2)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: catalog-check-licenses
+spec:
+  schedule: "0 9 * * *"
+  timeZone: "Asia/Tashkent"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: licenses
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "check_doctor_licenses"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# Har kecha 02:00 (Toshkent): oldinga 30 kunlik slotlar
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-generate-slots
+spec:
+  schedule: "0 2 * * *"
+  timeZone: "Asia/Tashkent"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2               # idempotent — qayta urinish xavfsiz
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: generate
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "generate_slots"]
+              resources:
+                requests: {cpu: "100m", memory: "256Mi"}
+                limits: {cpu: "1000m", memory: "512Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# A10: saqlash muddati o'tgan texnik ma'lumotlar (OTP, outbox, callback log, audit)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-purge-expired-data
+spec:
+  schedule: "30 3 * * *"          # har kuni 03:30 UTC (Toshkent 08:30 dan oldin, yuklama past)
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: purge
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "purge_expired_data"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# E14: kunlik analitik agregat (daily_booking_agg). Dashboard xom
+# `fact_booking` ni emas, shu jadvalni o'qiydi.
+# Tozalashdan KEYIN ishlaydi (03:30 -> 04:15): ikkalasi ham bazaga yuk beradi.
+# Job idempotent — muvaffaqiyatsiz bo'lsa keyingi yurish o'sha kunlarni
+# qayta hisoblaydi, ya'ni ma'lumot yo'qolmaydi.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-analytics-aggregates
+spec:
+  schedule: "15 4 * * *"          # har kuni 04:15 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: aggregates
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "rebuild_analytics_aggregates"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "512Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
+
+---
+# B12: Click to'lovlari uchun fiskal chek (Payme chekni o'zi chiqaradi)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: booking-fiscal-receipts
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 280
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: fiscal
+              image: registry.example.com/medbron/booking:${GIT_SHA}
+              command: ["python", "manage.py", "submit_fiscal_receipts"]
+              resources:
+                requests: {cpu: "50m", memory: "128Mi"}
+                limits: {cpu: "500m", memory: "256Mi"}
+              envFrom:
+                - secretRef: {name: booking-secrets}
+                - configMapRef: {name: booking-config}
