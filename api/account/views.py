@@ -1,3 +1,4 @@
+from django.conf import settings
 from api.account.services import (
     AuthError,
     InvalidCode,
@@ -50,7 +51,7 @@ class RequestOtpView(APIView):
         serializer.is_valid(raise_exception=True)
 
         try:
-            request_otp(serializer.validated_data["phone"], ip_address=_client_ip(request))
+            code = request_otp(serializer.validated_data["phone"], ip_address=_client_ip(request))
         except InvalidPhone as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except TooManyRequests as exc:
@@ -63,7 +64,13 @@ class RequestOtpView(APIView):
             )
 
         # Raqam tizimda bor-yo'qligini OSHKOR QILMAYMIZ — javob har doim bir xil
-        return Response({"detail": "Kod yuborildi"})
+        body = {"detail": "Kod yuborildi"}
+        # Lokal ishlab chiqish: SMS faqat logga yoziladi, web frontend kodni
+        # ko'rsata olishi uchun javobga qo'shamiz. Prodda console taqiqlangan
+        # (settings.py), shuning uchun bu shart u yerda hech qachon bajarilmaydi.
+        if settings.DEBUG and settings.SMS_PROVIDER == "console":
+            body["debug_code"] = code
+        return Response(body)
 
 
 @extend_schema(

@@ -46,7 +46,12 @@ def get_available_slots_cached(doctor_id: UUID, day: date) -> list[dict]:
         doctor_id=doctor_id, date_from=day_start, date_to=day_end
     )
     data = [
-        {"id": str(s.id), "start_at": s.start_at.isoformat(), "end_at": s.end_at.isoformat()}
+        {
+            "id": str(s.id),
+            "start_at": s.start_at.isoformat(),
+            "end_at": s.end_at.isoformat(),
+            "clinic_id": str(s.clinic_id) if s.clinic_id else None,
+        }
         for s in slots
     ]
 

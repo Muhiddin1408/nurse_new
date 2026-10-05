@@ -23,6 +23,42 @@ class BookingSerializer(serializers.Serializer):
     promo_code = serializers.CharField()
     created_at = serializers.DateTimeField()
     items = BookingItemSerializer(many=True)
+    # Web frontend: ro'yxat va tafsilot ekrani qo'shimcha so'rovsiz chizilsin.
+    # Faqat o'qish uchun; view'larda select_related bilan N+1 bo'lmaydi.
+    doctor_id = serializers.UUIDField()
+    doctor_name = serializers.CharField(source="doctor.user.full_name")
+    patient_name = serializers.CharField(source="patient.full_name")
+    start_at = serializers.DateTimeField(source="slot.start_at")
+    end_at = serializers.DateTimeField(source="slot.end_at")
+    place = serializers.SerializerMethodField()
+    clinic_name = serializers.SerializerMethodField()
+    clinic_address = serializers.SerializerMethodField()
+    address_text = serializers.SerializerMethodField()
+    payment_mode = serializers.CharField()
+    prepay_amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+    def get_place(self, obj) -> str:
+        # Joy slotdan kelib chiqadi: klinikasiz slot = uy chaqiruvi
+        return "clinic" if obj.slot.clinic_id else "home"
+
+    def get_clinic_name(self, obj) -> str:
+        return obj.slot.clinic.name if obj.slot.clinic_id else ""
+
+    def get_clinic_address(self, obj) -> str:
+        c = obj.slot.clinic if obj.slot.clinic_id else None
+        return f"{c.city}, {c.street}" if c else ""
+
+    def get_address_text(self, obj) -> str:
+        a = obj.address
+        if not a:
+            return ""
+        parts = [a.city, a.street]
+        if a.apartment:
+            parts.append(f"kv. {a.apartment}")
+        return ", ".join(p for p in parts if p)
+
+
+BOOKING_RELATED = ("doctor__user", "patient", "slot__clinic", "address")
 
 
 class CreateBookingSerializer(serializers.Serializer):

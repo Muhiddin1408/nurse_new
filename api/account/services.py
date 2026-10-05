@@ -58,7 +58,7 @@ VERIFY_BLOCK_SECONDS = 3600
 _PHONE_RE = re.compile(r"\+998\d{9}")
 
 
-def request_otp(phone: str, ip_address: str | None = None) -> None:
+def request_otp(phone: str, ip_address: str | None = None) -> str:
     """Tasdiqlash kodi yuboradi.
 
     ╔══════════════════════════════════════════════════════════════════════╗
@@ -117,6 +117,8 @@ def request_otp(phone: str, ip_address: str | None = None) -> None:
         logger.error("OTP SMS yuborilmadi: phone=%s, xato=%s", _mask(phone), exc)
         raise SmsUnavailable("SMS yuborib bo'lmadi. Birozdan keyin urinib ko'ring") from exc
     metrics.otp_requests.labels(result="sent").inc()
+    # Faqat lokal console rejimida view uni javobga qo'shadi (OtpRequestView)
+    return code
 
 
 def verify_otp(phone: str, code: str) -> tuple[User, bool]:

@@ -10,6 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from api.booking.serializers import (
+    BOOKING_RELATED,
     BookingSerializer,
     CancelBookingSerializer,
     CancellationPreviewSerializer,
@@ -76,7 +77,7 @@ class MyBookingsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request: Request):
-        qs = Booking.objects.filter(client=request.user).prefetch_related("items")  # N+1 yo'q
+        qs = Booking.objects.filter(client=request.user).select_related(*BOOKING_RELATED).prefetch_related("items")  # N+1 yo'q
         try:
             qs = _filter_my_bookings(qs, request.query_params)
         except ValueError as exc:
@@ -116,6 +117,7 @@ class BookingDetailView(APIView):
     def get(self, request: Request, booking_id):
         booking = (
             Booking.objects.filter(id=booking_id, client=request.user)
+            .select_related(*BOOKING_RELATED)
             .prefetch_related("items")
             .first()
         )

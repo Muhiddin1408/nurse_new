@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: light; }
+  html { -webkit-tap-highlight-color: transparent; scroll-behavior: smooth; }
+  body { @apply bg-ink-50 text-ink-900 font-sans antialiased; }
+  ::selection { @apply bg-brand-200 text-brand-950; }
+  h1, h2, h3, h4 { @apply font-display tracking-tight; }
+  input, select, textarea { @apply outline-none; }
+}
+
+@layer components {
+  .container-x { @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8; }
+  .card { @apply rounded-3xl bg-white shadow-soft ring-1 ring-ink-100; }
+  .field { @apply w-full rounded-2xl border border-ink-200 bg-white px-4 py-3 text-[15px] text-ink-900 placeholder:text-ink-400 transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 disabled:bg-ink-50 disabled:text-ink-400; }
+  .label { @apply mb-1.5 block text-sm font-semibold text-ink-700; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold; }
+  .mesh-bg {
+    background:
+      radial-gradient(60rem 40rem at 10% -10%, rgba(16,185,149,.18), transparent 60%),
+      radial-gradient(50rem 35rem at 100% 0%, rgba(59,130,246,.14), transparent 60%),
+      radial-gradient(40rem 30rem at 50% 120%, rgba(16,185,149,.10), transparent 60%);
+  }
+  .text-gradient { @apply bg-gradient-to-r from-brand-600 via-emerald-500 to-sky-500 bg-clip-text text-transparent; }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+}

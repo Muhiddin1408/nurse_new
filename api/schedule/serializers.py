@@ -10,12 +10,17 @@ class SlotSerializer(serializers.Serializer):
     Faza 4 da jadval alohida servisga chiqqanda, javob shakli o'sha servis
     bilan birga ko'chadi.
 
-    ⚠️ Maydon qo'shishdan oldin ikki marta o'ylang: `status`, `clinic_id`,
-    `doctor_id` — bularning hech biri klientga kerak emas (u allaqachon
-    qaysi shifokorni so'raganini biladi, va faqat FREE slotlar qaytadi).
-    Har bir ortiqcha maydon 200 ta slotga ko'paytiriladi.
+    ⚠️ Maydon qo'shishdan oldin ikki marta o'ylang: `status`, `doctor_id` —
+    klientga kerak emas (u allaqachon qaysi shifokorni so'raganini biladi, va
+    faqat FREE slotlar qaytadi). Har bir ortiqcha maydon 200 ta slotga
+    ko'paytiriladi.
+
+    `clinic_id` esa KERAK: bir shifokorning klinika va uy slotlari aralash
+    keladi, klient xizmat joyiga (`place`) mos slotni ko'rsatishi uchun
+    null = uy chaqiruvi, aks holda qaysi klinika ekanini bilishi shart.
     """
 
     id = serializers.UUIDField()
     start_at = serializers.DateTimeField()
     end_at = serializers.DateTimeField()
+    clinic_id = serializers.UUIDField(allow_null=True)

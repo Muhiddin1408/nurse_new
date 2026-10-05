@@ -300,12 +300,14 @@ REST_FRAMEWORK = {
         'booking_create': env('THROTTLE_BOOKING_CREATE', '20/hour'),   # foydalanuvchi bo'yicha
         'booking_cancel': env('THROTTLE_BOOKING_CANCEL', '30/hour'),
         'sensitive': env('THROTTLE_SENSITIVE', '5/hour'),              # akkaunt o'chirish va h.k.
-        'write': env('THROTTLE_WRITE', '60/hour'),                     # boshqa POST/PUT/PATCH/DELETE
-        'anon_read': env('THROTTLE_ANON_READ', '300/hour'),            # katalog, IP bo'yicha
+        # Lokalda (DEBUG) web frontend Vite proxy orqali ishlaydi — barcha so'rovlar
+        # bitta IP (127.0.0.1) dan keladi, prod limitlari bir necha daqiqada tugaydi.
+        'write': env('THROTTLE_WRITE', '600/hour' if DEBUG else '60/hour'),          # boshqa POST/PUT/PATCH/DELETE
+        'anon_read': env('THROTTLE_ANON_READ', '10000/hour' if DEBUG else '300/hour'),  # katalog, IP bo'yicha
         # OTP endpoint'lari IP bo'yicha shu limitda. Bu api/account/services.py
         # dagi telefon bo'yicha cheklovning O'RNIGA emas, USTIGA qo'shiladi:
         # throttle tez va arzon (kesh), services.py dagi tekshiruv aniqroq.
-        'otp': env('THROTTLE_OTP', '10/hour'),
+        'otp': env('THROTTLE_OTP', '100/hour' if DEBUG else '10/hour'),
     },
 }
 
