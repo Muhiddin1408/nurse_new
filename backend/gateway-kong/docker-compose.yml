@@ -26,6 +26,9 @@ services:
       KONG_REAL_IP_HEADER: X-Forwarded-For
       KONG_TRUSTED_IPS: ${KONG_TRUSTED_IPS:-127.0.0.1/32}
       KONG_HEADERS: "off"           # Kong versiyasini oshkor qilmaslik
+      # Servis konteyneri qayta yaratilsa (deploy) yangi IP darhol olinsin — Docker DNS TTL 600 s keshlanmasin
+      KONG_DNS_VALID_TTL: "5"
+      KONG_DNS_STALE_TTL: "0"
     volumes:
       - ./kong.${KONG_ENV:-dev}.yml:/kong/kong.yml:ro
     extra_hosts:

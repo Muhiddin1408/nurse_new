@@ -341,7 +341,8 @@ sequenceDiagram
 
 Siyosat (admin-service sozlamasi, default): > 24 soat — 100%, 2–24 soat — 50%, < 2 soat — 0%,
 boshlangandan keyin — bekor qilib bo'lmaydi. Shifokor / klinika / admin / tizim bekor qilsa — har
-doim 100%. `penalty_tiyin` billing'da shifokor payout'iga qo'shiladi.
+doim 100%. Qaytmagan qism (jarima) shifokor va platforma o'rtasida bron `money_split`'i bo'yicha qoladi:
+billing'da earning (to'langan summa ulushi) − refund ulushi (ADR-0012).
 
 ### 6.5 Shifokor onboarding va moderatsiya
 
@@ -402,8 +403,9 @@ sequenceDiagram
 
 Mijoz `confirmed/completed/no_show` bron bo'yicha nizo ochadi → dispute `booking`'dan `/summary`
 oladi (egalik + holat + to'langan summa) → `dispute.opened` (SLA 48 soat) → admin hal qiladi →
-`dispute.resolved{refund_tiyin, doctor_liable}` → payment refund qiladi, billing `doctor_liable`
-bo'lsa keyingi payout'dan ushlaydi → `refund.succeeded` dispute'ga qaytadi (yopiladi).
+`dispute.resolved{refund_tiyin, doctor_liable}` → payment refund qiladi (`doctor_liable=false` — shifokor
+ulushi 0) → `refund.succeeded{doctor_share_tiyin}` → billing shu ulushni keyingi payout'dan ushlaydi, dispute
+yopiladi (ADR-0012).
 SLA o'tsa — `dispute.sla_breached` (alert).
 
 ### 6.8 Waitlist
@@ -476,9 +478,11 @@ stateDiagram-v2
 
 ### 7.4 To'lov va refund (payment-service)
 
-Payment: `created → processing → succeeded → (partially_)refunded`, `created|processing → failed|cancelled|expired`,
-`succeeded → reversed` (provayder o'zi qaytardi).
-Refund: `pending → processing → succeeded | failed` (`attempts`, `next_attempt_at`, eksponensial backoff).
+Payment: `created → processing → succeeded → (partially_)refunded`, `created|processing → cancelled|expired`,
+`succeeded|partially_refunded|refunded → reversed` (provayder o'zi qaytardi: Payme `CancelTransaction` −2).
+Bitta bronda pul faqat bir marta yechiladi (`uq_payments_money_taken_per_booking`).
+Refund: `pending → succeeded | failed | manual_required` (`attempts`, `next_attempt_at` — lease + eksponensial
+backoff; `manual_required` — provayder API orqali mumkin emas, admin kabinetda qaytarib tasdiqlaydi). ADR-0012.
 
 ---
 
@@ -571,7 +575,7 @@ consumerlar **tartibga tayanmaydi**:
 | schedule | `bookable_doctors`, `active_affiliations` | `doctor.*`, `affiliation.*`, `clinic.*` | catalog |
 | pricing | `services_cache`, `client_stats` | `service.*`, `booking.*` | catalog / booking |
 | review | `reviewable_bookings` | `booking.completed` | booking |
-| billing | `payout_lines` manbasi | `booking.completed/cancelled/no_show`, `refund.succeeded`, `dispute.resolved` | booking / payment / dispute |
+| billing | `earning_entries` (shifokor daromad daftari, ADR-0012) | `booking.completed/cancelled/no_show`, `refund.succeeded`, `payment.reversed` | booking / payment |
 | catalog | `doctor.rating`, `clinic.rating` | `rating.recalculated` | review |
 | search | ES hujjatlari | 14 ta event | catalog / schedule / review |
 
@@ -628,7 +632,7 @@ Monolit (`apps/`, `api/`, `conf/`) ishlashda davom etadi va **qismma-qism** o'ch
    slotlar va faol bronlar ko'chirilgan oynada (rejali texnik ishlar, ~15 daq) yangi bron qabul qilinmaydi.
 4. **Pul** (4-bosqich): payment/billing. Payme/Click kabinetida webhook URL yangisiga o'zgartiriladi;
    ochiq to'lovlar ko'chirilgan bazaga keladi; ledger balanslari ko'chirish skriptida tekshiriladi
-   (debit = credit).
+   (debit = credit) — `scripts/migrate/money.py`, `docs/runbooks/money-cutover.md`.
 5. **Qolganlari** (5-bosqich) va monolitni o'chirish. Frontend `/api/v1/...` → `/v1/...`
    yo'llariga 3-bosqichdan boshlab bosqichma-bosqich o'tkaziladi (Kong'da vaqtinchalik rewrite).
 
@@ -652,6 +656,7 @@ yozadigan ko'prik (`bridge`) ishlatiladi, toki monolit to'liq o'chirilmaguncha.
 | [0009](adr/0009-ci-github-actions-compose-deploy.md) | CI — GitHub Actions, deploy — Docker Compose, registry — GHCR |
 | [0010](adr/0010-object-storage-s3-api-seaweedfs.md) | Obyekt ombori — S3 API, dev/self-hosted'da SeaweedFS (MinIO image'lari tarqatilmaydi) |
 | [0011](adr/0011-core-domain-boundaries.md) | Asosiy domen chegaralari: egalik, bron sagasi tartibi, kompensatsiyalar, monolit xatolari tuzatishlari |
+| [0012](adr/0012-money-payment-billing.md) | Pul: to'lov sagasi, yagona taqsimot formulasi (`share_of`), refund ulushi, payout daftari, provayder OFD'si |
 
 ---
 
@@ -660,10 +665,11 @@ yozadigan ko'prik (`bridge`) ishlatiladi, toki monolit to'liq o'chirilmaguncha.
 | # | Savol | Holat |
 |---|---|---|
 | 1 | Push: FCM yetarlimi, APNs alohida kerakmi? | Hal qilindi (2026-10-21): faqat FCM (iOS ham FCM orqali) |
-| 2 | Fiskal chek: Payme/Click OFD yetarlimi? | Ochiq — 4-bosqichda (payment-service) kerak |
+| 2 | Fiskal chek: Payme/Click OFD yetarlimi? | Hal qilindi (2026-10-21): ha — provayder OFD'si (Payme `detail`, Click fiskal API + retry); naqd/klinikada — klinika kassasi |
 | 3 | Prod deploy: Compose yoki Kubernetes? | Standart: Compose (ADR-0009), image/health kontrakti k8s'ga tayyor |
 | 4 | CI: GitHub Actions yoki GitLab? | Standart: GitHub Actions (ADR-0009) |
 | 5 | Frontend yangi API'ga qachon? | Standart: 3-bosqichdan, Kong'da vaqtinchalik rewrite bilan |
+| 6 | Zaklad (deposit) bronda klinikada olingan qoldiqdan platforma komissiyasi qanday undiriladi? | Ochiq (ADR-0012 §5): hozir undirilmaydi — billing faqat onlayn to'langan summadan hisoblaydi |
 
 ---
 
@@ -675,6 +681,6 @@ yozadigan ko'prik (`bridge`) ishlatiladi, toki monolit to'liq o'chirilmaguncha.
 | 1 — Poydevor | ✅ | `libs/py-common`, `libs/go-common`, `backend/infra`, `backend/gateway-kong` (monolit oldida), `scripts/`, `service-templates/`, CI, ADR-0009, DLQ runbook |
 | 2 — Identity | ✅ | auth, admin, user, file, notification; Kong `/v1/*`, monolit RS256 ko'prigi, `scripts/migrate/identity.py`, e2e (`tests/e2e`), ADR-0010, cutover runbook |
 | 3 — Asosiy domen | ✅ | catalog, schedule (Go), pricing, booking; ADR-0011; Kong marshrutlari; `scripts/migrate/core.py`, core-cutover runbook; e2e — to'liq bron oqimi (`scripts/e2e.sh`) |
-| 4 — Pul | — | payment, billing, saga testlari |
+| 4 — Pul | ✅ | payment (Payme JSON-RPC, Click SHOP API, ledger, refund, reconciliation, provayder OFD), billing (daromad daftari, haftalik payout); ADR-0012; Kong marshrutlari; `scripts/migrate/money.py`, money-cutover runbook; e2e — Payme/Click, saga kompensatsiyasi, payout sikli |
 | 5 — Real-time va qo'shimchalar | — | ws-gateway, review, dispute, search, analytics |
 | 6 — Gateway va prod | — | kong.prod.yml, k6, alertlar, runbook'lar |

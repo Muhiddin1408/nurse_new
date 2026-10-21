@@ -45,7 +45,8 @@
         "paid_tiyin",
         "refund_tiyin",
         "penalty_tiyin",
-        "previous_status"
+        "previous_status",
+        "money"
       ],
       "properties": {
         "booking_id": {
@@ -129,6 +130,54 @@
           "enum": [
             "pending_payment",
             "confirmed"
+          ]
+        },
+        "money": {
+          "$ref": "#/$defs/money_split"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "money_split": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Bron yaratilganda pricing-service hisoblagan moliyaviy snapshot (tiyinda).",
+      "required": [
+        "total_tiyin",
+        "platform_fee_tiyin",
+        "provider_fee_tiyin",
+        "doctor_payout_tiyin",
+        "discount_tiyin",
+        "discount_borne_by"
+      ],
+      "properties": {
+        "total_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "platform_fee_tiyin": {
+          "type": "integer",
+          "description": "Chegirmani platforma ko'tarsa manfiy bo'lishi mumkin (marketing xarajati); invariant: total = platform_fee + provider_fee + doctor_payout"
+        },
+        "provider_fee_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "doctor_payout_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "discount_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "discount_borne_by": {
+          "type": "string",
+          "enum": [
+            "",
+            "platform",
+            "doctor"
           ]
         }
       }

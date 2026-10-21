@@ -63,7 +63,13 @@ func TestCatalogConstants(t *testing.T) {
 		!spec.HasConsumer("notification-service") || spec.HasConsumer("auth-service") {
 		t.Fatal(spec)
 	}
-	if len(events.Catalog) != 53 {
-		t.Fatalf("catalog size %d", len(events.Catalog))
+	// Katalog bosqichlar bilan o'sadi — aniq son emas, har yozuv to'liqligi tekshiriladi
+	if len(events.Catalog) == 0 {
+		t.Fatal("catalog empty")
+	}
+	for name, s := range events.Catalog {
+		if s.EventType != name || len(s.Publishers) == 0 {
+			t.Fatalf("incomplete spec %s: %+v", name, s)
+		}
 	}
 }

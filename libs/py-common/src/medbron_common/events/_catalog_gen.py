@@ -513,7 +513,7 @@ CATALOG: dict[str, EventSpec] = {
         event_type="dispute.resolved",
         version=1,
         publishers=("dispute-service",),
-        consumers=("payment-service", "billing-service", "notification-service", "analytics-service",),
+        consumers=("payment-service", "notification-service", "analytics-service",),
         schema="dispute.resolved.v1.json",
         aggregate="dispute",
     ),

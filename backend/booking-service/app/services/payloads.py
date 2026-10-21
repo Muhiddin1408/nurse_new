@@ -103,6 +103,8 @@ def cancelled(
             "refund_tiyin": refund_tiyin,
             "penalty_tiyin": penalty_tiyin,
             "previous_status": "confirmed" if previous_status == "in_progress" else previous_status,
+            # billing: jarima (qaytmagan qism) shifokor/platforma o'rtasida shu snapshot bo'yicha (ADR-0012)
+            "money": money(b),
         },
     )
 

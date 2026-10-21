@@ -16,7 +16,7 @@ from medbron_common.errors import Forbidden
 from app.core.security import verify_internal_token
 from app.repositories import bookings as repo
 from app.routers.deps import DepsDep, Session
-from app.services import lifecycle
+from app.services import lifecycle, payloads
 from app.services.errors import BookingNotFound
 
 ALLOWED_CALLERS: tuple[str, ...] = (
@@ -53,11 +53,14 @@ async def payable(booking_id: UUID, session: Session, deps: DepsDep) -> dict[str
         "status": b.status,
         "client_id": str(b.client_id),
         "doctor_id": str(b.doctor_id),
+        "clinic_id": str(b.clinic_id) if b.clinic_id else None,
         "payment_mode": b.payment_mode,
         "prepay_tiyin": b.prepay_tiyin,
         "total_tiyin": b.total_tiyin,
         "payment_due_at": b.payment_due_at.isoformat() if b.payment_due_at else None,
         "payable": b.status == "pending_payment" and b.payment_due_at is not None and b.payment_due_at > now,
+        # payment ledger'i to'lovni shu snapshot bo'yicha taqsimlaydi (qayta hisoblamaydi, ADR-0008/0012)
+        "money": payloads.money(b),
         "items": [
             {
                 "service_name": i.service_name,

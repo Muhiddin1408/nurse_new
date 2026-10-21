@@ -27,7 +27,7 @@
 | 08 | pricing-service | Py | 8080 | 8108 | 5408 | 6308 | — | `user.deletion_requested`, `admin.settings_changed`, `service.created`, `service.updated`, `service.deactivated`, `booking.created`, `booking.confirmed`, `booking.cancelled`, `booking.expired`, `booking.completed`, `booking.no_show` | catalog, admin |
 | 09 | booking-service | Py | 8080 | 8109 | 5409 | 6309 | `booking.created`, `booking.confirmed`, `booking.cancelled`, `booking.expired`, `booking.rescheduled`, `booking.started`, `booking.completed`, `booking.no_show`, `booking.confirmation_failed`, `waitlist.slot_offered` | `user.deletion_requested`, `admin.settings_changed`, `doctor.suspended`, `clinic.suspended`, `affiliation.ended`, `slot.released`, `payment.captured`, `payment.reversed`, `refund.succeeded` | catalog, schedule, pricing, user, admin |
 | 10 | payment-service | Py | 8080 | 8110 | 5410 | 6310 | `payment.created`, `payment.captured`, `payment.failed`, `payment.reversed`, `refund.succeeded`, `refund.failed`, `payment.discrepancy_found` | `admin.settings_changed`, `booking.cancelled`, `booking.no_show`, `booking.confirmation_failed`, `payout.paid`, `dispute.resolved` | booking, admin |
-| 11 | billing-service | Py | 8080 | 8111 | 5411 | 6311 | `payout.calculated`, `payout.paid` | `admin.settings_changed`, `booking.cancelled`, `booking.completed`, `booking.no_show`, `payment.reversed`, `refund.succeeded`, `dispute.resolved` | catalog, admin |
+| 11 | billing-service | Py | 8080 | 8111 | 5411 | 6311 | `payout.calculated`, `payout.paid` | `admin.settings_changed`, `booking.cancelled`, `booking.completed`, `booking.no_show`, `payment.reversed`, `refund.succeeded` | catalog, admin |
 | 12 | review-service | Py | 8080 | 8112 | 5412 | 6312 | `review.submitted`, `review.published`, `review.rejected`, `rating.recalculated` | `admin.settings_changed`, `booking.completed` | booking |
 | 13 | dispute-service | Py | 8080 | 8113 | 5413 | 6313 | `dispute.opened`, `dispute.resolved`, `dispute.sla_breached` | `admin.settings_changed`, `refund.succeeded` | booking, file |
 | 14 | search-service | Py | 8080 | 8114 | 5414 | 6314 | — | `doctor.approved`, `doctor.suspended`, `doctor.reinstated`, `doctor.profile_updated`, `clinic.published`, `clinic.updated`, `clinic.suspended`, `affiliation.accepted`, `affiliation.paused`, `affiliation.resumed`, `affiliation.ended`, `service.created`, `service.updated`, `service.deactivated`, `schedule.availability_changed`, `rating.recalculated` | — |
@@ -133,18 +133,20 @@ Routerlar: `/v1/<x>` — user JWT, `/v1/admin/<x>` — admin JWT + permission, `
 - **Cron:** to'lanmagan bronlarni expire qilish (har daqiqa), 24 soatdan keyin avto-yakunlash (soatlik), waitlist va idempotency kalitlarini tozalash (kunlik).
 
 ### 10 payment-service
-- **Egalik:** to'lovlar, provayder adapterlari (Payme JSON-RPC, Click SHOP API, naqd), webhooklar, refundlar (retry bilan), double-entry ledger, fiskal chek elementlari, kunlik reconciliation.
-- **Tashqi API:** `POST /v1/payments` (`booking_id`, `provider` → `checkout_url`), `GET /v1/payments/{id}`, `POST /v1/payments/payme/webhook` (Basic Auth, IP allowlist), `POST /v1/payments/click/prepare|complete` (imzo, IP allowlist).
-- **Admin API:** `/v1/admin/payments`, `/v1/admin/refunds` (qo'lda refund — `payments.refund`), `/v1/admin/ledger`, `/v1/admin/reconciliation`.
-- **Calls:** booking (`/payable`), admin (provayder komissiyasi).
-- **Cron:** refund retry (har daqiqa), reconciliation (kunlik 03:00), eskirgan `created` to'lovlarni `expired` qilish.
+- **Egalik:** to'lov urinishlari (Payme Merchant API, Click SHOP API; `cash` — enum, onlayn emas), webhooklar, refundlar (retry, `manual_required` navbati), ikki yozuvli daftar (ledger), fiskal chek elementlari (provayder OFD'si), kunlik reconciliation, provayder jurnali (ADR-0012).
+- **Tashqi API:** `POST /v1/payments` (`booking_id`, `provider` → `checkout_url`), `GET /v1/payments?booking_id=`, `GET /v1/payments/{id}`, `POST /v1/payments/payme/webhook` (Basic Auth, IP allowlist), `POST /v1/payments/click/prepare|complete` (MD5 imzo, IP allowlist).
+- **Admin API:** `/v1/admin/payments`, `/v1/admin/refunds` (qo'lda refund `Idempotency-Key` bilan, `complete`, `retry` — `payments.refund`), `/v1/admin/ledger` (+ `/balances`), `/v1/admin/reconciliation` (+ `registry` CSV import, `resolve`) — o'qish `payments.read`.
+- **Internal API:** yo'q (payment'ni hech kim sinxron chaqirmaydi).
+- **Calls:** booking (`/payable` — money snapshot va fiskal elementlar bilan, `/extend-payment`), admin (sozlamalar: fiskal TIN).
+- **Cron:** refundlar (har daqiqa), Click fiskal cheklari (5 daq), eskirgan urinishlar → `expired` (10 daq), ichki reconciliation (03:00), provayder jurnali retention (04:30).
 
 ### 11 billing-service
-- **Egalik:** payout hisobi (shifokor bo'yicha), payout davrlari (haftalik), payout qatorlari, to'lov rekvizitlari, shifokor daromad paneli, CSV ko'chirma.
-- **Tashqi API:** `GET /v1/doctor/earnings`, `GET|PUT /v1/doctor/payout-account`, `GET /v1/doctor/payouts`, `/v1/clinic/{id}/earnings`.
-- **Admin API:** `/v1/admin/payouts` (hisoblash, `mark-paid` — `payouts.manage`).
-- **Calls:** catalog (authz), admin (payout davri sozlamalari).
-- **Cron:** haftalik payout hisoblash (dushanba 04:00).
+- **Egalik:** shifokor daromad daftari (`earning_entries`: earning / refund / reversal — ADR-0012), haftalik payout davrlari, to'lov rekvizitlari (javobda faqat niqoblangan raqam), daromad paneli, CSV ko'chirma.
+- **Tashqi API:** `GET /v1/doctor/earnings?period=|from&to`, `GET|PUT /v1/doctor/payout-account`, `GET /v1/doctor/payouts`, `GET /v1/doctor/payouts/{id}/statement`, `GET /v1/clinic/{id}/earnings` (clinic_admin, catalog `/access`).
+- **Admin API:** `/v1/admin/payouts` (ro'yxat, `build`, `{id}/mark-paid`, `{id}/statement` — `payouts.manage`).
+- **Internal API:** yo'q.
+- **Calls:** catalog (klinika a'zoligi authz), admin (payout min summasi va kuni).
+- **Cron:** haftalik payout hisoblash (admin `payout.weekday`, 04:00 Toshkent) — o'tgan to'liq hafta.
 
 ### 12 review-service
 - **Egalik:** sharhlar, avtomatik moderatsiya bayroqlari (telefon, havola, so'kinish), shifokor javobi, reyting hisoblash (minimal 5 ta sharhdan).
@@ -190,7 +192,7 @@ Routerlar: `/v1/<x>` — user JWT, `/v1/admin/<x>` — admin JWT + permission, `
 | `pricing-service.events` | 11 ta key |
 | `booking-service.events` | 9 ta key |
 | `payment-service.events` | 6 ta key |
-| `billing-service.events` | 7 ta key |
+| `billing-service.events` | 6 ta key |
 | `review-service.events` | `admin.settings_changed`, `booking.completed` |
 | `dispute-service.events` | `admin.settings_changed`, `refund.succeeded` |
 | `search-service.events` | 16 ta key |

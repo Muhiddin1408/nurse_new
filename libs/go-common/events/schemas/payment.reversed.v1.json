@@ -34,6 +34,7 @@
         "client_id",
         "provider",
         "amount_tiyin",
+        "doctor_share_tiyin",
         "reversed_at",
         "provider_reason"
       ],
@@ -62,6 +63,11 @@
           "type": "integer",
           "minimum": 0,
           "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "doctor_share_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Shu summaning shifokor ulushi (tiyin) — payment ledger'ida doctor_payable dan yechilgan; billing payout'dan aynan shuni ushlaydi (qayta hisoblamaydi)"
         },
         "reversed_at": {
           "type": "string",

@@ -34,6 +34,7 @@
         "booking_id",
         "client_id",
         "amount_tiyin",
+        "doctor_share_tiyin",
         "reason",
         "source",
         "source_ref",
@@ -60,6 +61,11 @@
           "type": "integer",
           "minimum": 0,
           "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "doctor_share_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Shu summaning shifokor ulushi (tiyin) — payment ledger'ida doctor_payable dan yechilgan; billing payout'dan aynan shuni ushlaydi (qayta hisoblamaydi)"
         },
         "reason": {
           "type": "string"

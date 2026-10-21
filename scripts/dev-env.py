@@ -10,7 +10,8 @@
 - Internal tokenlar sinxron grafga mos: har servisning bitta chiquvchi tokeni (`INTERNAL_TOKEN`),
   qabul qiluvchida `INTERNAL_TOKEN_<CHAQIRUVCHI>` = chaqiruvchining tokeni. Tokenlar
   `secrets/dev-internal-tokens.json` da saqlanadi — keyin qo'shilgan servislar ham mos keladi.
-- Lokal qulayliklar: auth — `OTP_DEBUG_ECHO=true` (SMS console), `ENVIRONMENT=local`.
+- Lokal qulayliklar: auth — `OTP_DEBUG_ECHO=true` (SMS console), `ENVIRONMENT=local`; payment — tasodifiy
+  Payme/Click kalitlari (e2e webhook'larni imzolaydi).
 
 PROD UCHUN EMAS: prod sirlari serverda / vault'da yaratiladi.
 """
@@ -33,11 +34,15 @@ TOKENS = ROOT / "secrets" / "dev-internal-tokens.json"
 LINE = re.compile(r"^(?P<key>[A-Z0-9_]+)=(?P<value>.*)$")
 GENERATED = {
     "POSTGRES_PASSWORD", "REDIS_PASSWORD", "OTP_HASH_SECRET", "TELEGRAM_LINK_SECRET", "TELEGRAM_WEBHOOK_SECRET",
+    # Lokal provayder "kabineti" — e2e webhook imzolarini shu kalitlar bilan quradi (scripts/e2e.sh eksport qiladi)
+    "PAYME_SECRET_KEY", "CLICK_SECRET_KEY",
 }  # fmt: skip
 LOCAL_OVERRIDES = {
     # Lokal e2e bitta IP'dan ko'p kiradi; prod qiymati .env.example da (20/soat)
     "auth-service": {"OTP_DEBUG_ECHO": "true", "SMS_PROVIDER": "console", "OTP_MAX_PER_IP_HOUR": "1000"},
     "notification-service": {"SMS_PROVIDER": "console", "PUSH_PROVIDER": "console"},
+    # Click Merchant API (reversal) lokal bo'sh — refundlar `manual_required` ga tushadi (tashqi tarmoq yo'q)
+    "payment-service": {"PAYME_MERCHANT_ID": "dev-merchant", "CLICK_SERVICE_ID": "777", "CLICK_MERCHANT_ID": "42"},
 }
 
 

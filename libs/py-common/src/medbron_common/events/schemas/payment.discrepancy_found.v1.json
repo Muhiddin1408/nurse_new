@@ -42,12 +42,17 @@
           "format": "date"
         },
         "provider": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "enum": [
             "payme",
             "click",
-            "cash"
-          ]
+            "cash",
+            null
+          ],
+          "description": "Ichki tekshiruvlarda (ledger_imbalance, missing_ledger) to'lov bo'lmasa — null"
         },
         "type": {
           "type": "string"

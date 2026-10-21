@@ -377,7 +377,7 @@ refund.succeeded:
   consumers: [booking-service, billing-service, dispute-service, notification-service, analytics-service]
   schema: refund.succeeded.v1.json
   aggregate: refund
-  description: "Pul mijozga qaytarildi."
+  description: "Pul mijozga qaytarildi. doctor_share_tiyin — refundning shifokor ulushi (billing payout'dan ushlaydi)."
 
 refund.failed:
   version: 1
@@ -459,10 +459,10 @@ dispute.opened:
 dispute.resolved:
   version: 1
   publisher: dispute-service
-  consumers: [payment-service, billing-service, notification-service, analytics-service]
+  consumers: [payment-service, notification-service, analytics-service]
   schema: dispute.resolved.v1.json
   aggregate: dispute
-  description: "Nizo hal qilindi. refund_tiyin>0 bo'lsa payment-service refund qiladi; billing payout'dan ushlaydi."
+  description: "Nizo hal qilindi. refund_tiyin>0 bo'lsa payment-service refund qiladi (doctor_liable=false — shifokor ulushi 0); billing ushlanmani refund.succeeded.doctor_share_tiyin dan oladi (ADR-0012)."
 
 dispute.sla_breached:
   version: 1

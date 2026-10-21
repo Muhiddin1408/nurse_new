@@ -21,18 +21,30 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [booking_id, number, status, client_id, doctor_id, payable, prepay_tiyin, total_tiyin, payment_mode, payment_due_at, items]
+                required: [booking_id, number, status, client_id, doctor_id, clinic_id, payable, prepay_tiyin, total_tiyin, payment_mode, payment_due_at, money, items]
                 properties:
                   booking_id: {type: string, format: uuid}
                   number: {type: string}
                   status: {type: string}
                   client_id: {type: string, format: uuid}
                   doctor_id: {type: string, format: uuid}
+                  clinic_id: {type: [string, "null"], format: uuid}
                   payable: {type: boolean, description: "pending_payment VA payment_due_at > now"}
                   prepay_tiyin: {type: integer}
                   total_tiyin: {type: integer}
                   payment_mode: {type: string}
                   payment_due_at: {type: [string, "null"], format: date-time}
+                  money:
+                    type: object
+                    description: "Bron money_split snapshot'i (contracts/events $defs.money_split) — payment ledger taqsimoti"
+                    required: [total_tiyin, platform_fee_tiyin, provider_fee_tiyin, doctor_payout_tiyin, discount_tiyin, discount_borne_by]
+                    properties:
+                      total_tiyin: {type: integer}
+                      platform_fee_tiyin: {type: integer}
+                      provider_fee_tiyin: {type: integer}
+                      doctor_payout_tiyin: {type: integer}
+                      discount_tiyin: {type: integer}
+                      discount_borne_by: {type: string, enum: ["", platform, doctor]}
                   items:
                     type: array
                     description: fiskal chek elementlari

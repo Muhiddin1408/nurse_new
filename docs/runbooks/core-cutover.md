@@ -67,6 +67,8 @@ uy chaqiruvi sloti) yoziladi.
    (ikki joyda yozish yo'q) — frontend relizidan keyin olib tashlanadi.
 
 ## 4. To'lov (4-bosqichgacha)
+> 4-bosqichdan keyin: `docs/runbooks/money-cutover.md` (payment/billing servislari).
+
 payment monolitda qoladi: monolit `payment.captured`/`refund.succeeded` ni outbox orqali `medbron.events`
 ga yuborishi kerak (booking-service consumer). Ko'chirish paytida `pending_payment` bo'lgan bronlar uchun
 to'lov yechilsa — booking `confirm` qiladi yoki `confirmation_failed` (slot yo'q) chiqaradi → refund.

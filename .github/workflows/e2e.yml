@@ -1,4 +1,4 @@
-# Bosqichlarning "tayyor" mezoni: ko'chirilgan servislar (identity + asosiy domen) + infra + Kong Docker'da va tests/e2e.
+# Bosqichlarning "tayyor" mezoni: ko'chirilgan servislar (identity + asosiy domen + pul) + infra + Kong Docker'da va tests/e2e.
 name: e2e
 
 on:
@@ -46,7 +46,7 @@ jobs:
         if: failure()
         run: |
           for s in auth-service admin-service user-service file-service notification-service \
-                   catalog-service schedule-service pricing-service booking-service; do
+                   catalog-service schedule-service pricing-service booking-service payment-service billing-service; do
             (cd backend/$s && docker compose logs --tail=200) || true
           done
           (cd backend/gateway-kong && docker compose logs --tail=200) || true

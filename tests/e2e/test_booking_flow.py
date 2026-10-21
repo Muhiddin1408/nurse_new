@@ -4,8 +4,8 @@ Bitta "dunyo" (modul fixture'i) quriladi: admin mutaxassislik va klinika yaratad
 shifokor onboarding'dan o'tadi (hujjatlar file-service'da) va tasdiqlanadi, klinikaga taklif qilinadi,
 xizmatlar va ish qoidalari yaratiladi. Testlar shu dunyoda mijoz bronlarini sinaydi.
 
-Klinika bronlari — `at_clinic` (darhol tasdiqlanadi); uy chaqiruvi — har doim prepaid: `payment.captured`
-eventini payment-service o'rniga booking konteyneri ichidan (o'z RabbitMQ sozlamalari bilan) yuboramiz.
+Klinika bronlari — `at_clinic` (darhol tasdiqlanadi); uy chaqiruvi — har doim prepaid: 4-bosqichdan to'lov
+haqiqiy payment-service orqali (Payme webhooklari Kong'dan, `payments.py`).
 """
 
 from __future__ import annotations
@@ -16,13 +16,14 @@ import secrets
 import subprocess
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
+import payments
 from conftest import bearer, eventually
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,9 +48,11 @@ def day(offset: int) -> date:
     return datetime.now(TASHKENT).date() + timedelta(days=offset)
 
 
-def publish_event(event_type: str, aggregate_type: str, aggregate_id: str, data: dict[str, Any]) -> None:
-    """Hali ko'chirilmagan servis (payment) eventini booking-service konteyneri ichidan yuboradi —
-    test kodiga RabbitMQ paroli tushmaydi, envelope `medbron_common` bilan quriladi."""
+def publish_event(
+    event_type: str, aggregate_type: str, aggregate_id: str, data: dict[str, Any], *, producer: str = "payment-service"
+) -> None:
+    """Eventni booking-service konteyneri ichidan yuboradi (test kodiga RabbitMQ paroli tushmaydi, envelope
+    `medbron_common` bilan quriladi). Faqat vaqtni "sakratish" uchun (masalan, o'tgan haftada yakunlangan qabul)."""
     script = (
         "import asyncio, json, sys\n"
         "from medbron_common.eventbus.envelope import build_envelope\n"
@@ -64,7 +67,7 @@ def publish_event(event_type: str, aggregate_type: str, aggregate_id: str, data:
     )
     envelope = {
         "event_type": event_type,
-        "producer": "payment-service",
+        "producer": producer,
         "aggregate_type": aggregate_type,
         "aggregate_id": aggregate_id,
         "data": data,
@@ -268,7 +271,7 @@ def test_parallel_bookings_one_slot_only_one_wins(
     assert loser["code"] == "SLOT_TAKEN"
 
 
-def test_home_visit_prepaid_confirmed_by_payment_event_then_rescheduled(
+def test_home_visit_prepaid_confirmed_by_payment_then_rescheduled(
     http: httpx.Client, world: dict[str, Any], client: dict[str, Any]
 ) -> None:
     address = ok(http.post("/v1/users/me/addresses", headers=client["h"], json={
@@ -290,11 +293,8 @@ def test_home_visit_prepaid_confirmed_by_payment_event_then_rescheduled(
 
     eventually(neighbour_blocked, timeout=45)
 
-    publish_event("payment.captured", "payment", str(uuid.uuid4()), {
-        "payment_id": str(uuid.uuid4()), "booking_id": booking["id"], "client_id": client["id"],
-        "provider": "payme", "amount_tiyin": booking["prepay_tiyin"],
-        "captured_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-    })  # fmt: skip
+    payments.checkout(http, client["h"], booking["id"])
+    payments.payme_pay(http, booking["id"], booking["prepay_tiyin"])  # → payment.captured → booking confirm
 
     def confirmed() -> dict[str, Any]:
         b = ok(http.get(f"/v1/bookings/{booking['id']}", headers=client["h"]))

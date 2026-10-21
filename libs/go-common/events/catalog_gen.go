@@ -500,7 +500,7 @@ var Catalog = map[string]Spec{
 		EventType:  DisputeResolved,
 		Version:    1,
 		Publishers: []string{"dispute-service"},
-		Consumers:  []string{"payment-service", "billing-service", "notification-service", "analytics-service"},
+		Consumers:  []string{"payment-service", "notification-service", "analytics-service"},
 		Schema:     "dispute.resolved.v1.json",
 		Aggregate:  "dispute",
 	},

@@ -392,7 +392,7 @@ async def on_payment_discrepancy(session: AsyncSession, event: Envelope) -> None
         "ops_discrepancy",
         {
             "day": data["day"],
-            "provider": data["provider"],
+            "provider": data["provider"] or "—",  # ichki tekshiruv (ledger) — provayderga bog'liq emas
             "type": data["type"],
             "payment_id": data["payment_id"] or "—",
         },

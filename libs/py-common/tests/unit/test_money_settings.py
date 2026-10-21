@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from medbron_common.http_client import ServiceClient, UpstreamUnavailable
-from medbron_common.money import adjust, bp_of, percent_of, tiyin_to_som
+from medbron_common.money import Share, adjust, bp_of, percent_of, prorate, share_of, tiyin_to_som
 from medbron_common.settings_client import PlatformSettingsClient
 
 
@@ -22,6 +22,22 @@ def test_money_half_up() -> None:
         from medbron_common.money import _div_half_up
 
         _div_half_up(1, 0)
+
+
+def test_share_of_full_partial_and_rounding() -> None:
+    money = {"total_tiyin": 15_000_000, "platform_fee_tiyin": 2_250_000, "provider_fee_tiyin": 150_000,
+             "doctor_payout_tiyin": 12_600_000}
+    assert share_of(money, 15_000_000) == Share(12_600_000, 2_250_000, 150_000)
+    deposit = share_of(money, 3_000_000)  # 20% zaklad
+    assert deposit == Share(2_520_000, 450_000, 30_000)
+    odd = share_of(money, 1)
+    assert odd.doctor_tiyin + odd.platform_tiyin + odd.provider_tiyin == 1
+    # Chegirmani platforma ko'targan: platform ulushi manfiy, yig'indi baribir summaga teng
+    promo = {"total_tiyin": 10_000_000, "platform_fee_tiyin": -500_000, "provider_fee_tiyin": 100_000,
+             "doctor_payout_tiyin": 10_400_000}
+    half = share_of(promo, 5_000_000)
+    assert half == Share(5_200_000, -250_000, 50_000)
+    assert prorate(7, 1, 0) == 0 and prorate(10, 1, 3) == 3
 
 
 class FakeRedis:

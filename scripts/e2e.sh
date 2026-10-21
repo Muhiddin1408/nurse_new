@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E: infra + ko'chirilgan servislar (2: identity, 3: asosiy domen) + Kong ni Docker'da ko'taradi va
+# E2E: infra + ko'chirilgan servislar (2: identity, 3: asosiy domen, 4: pul) + Kong ni Docker'da ko'taradi va
 # tests/e2e ni ishga tushiradi.
 #
 #   scripts/e2e.sh            # ko'tarish (build), migratsiya, admin bootstrap, testlar
@@ -10,10 +10,11 @@
 # LOKAL/DEV uchun: .env lar scripts/dev-env.py bilan yaratiladi (mavjudlari tegilmaydi).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# Tartib: chaqiriladiganlar oldin (sinxron DAG) — booking oxirida
+# Tartib: chaqiriladiganlar oldin (sinxron DAG) — booking, keyin payment/billing
 SERVICES=(
   file-service admin-service auth-service user-service notification-service
   catalog-service schedule-service pricing-service booking-service
+  payment-service billing-service
 )
 PY="${PYTHON:-python3}"
 BUILD=1
@@ -32,7 +33,9 @@ done
 
 echo "==> infra"
 [[ -f "$ROOT/backend/infra/.env" ]] || { echo "XATO: backend/infra/.env yo'q (cp .env.example .env)" >&2; exit 1; }
-(cd "$ROOT/backend/infra" && docker compose up -d --wait)
+# dlx-bootstrap — bir martalik (exit 0): `--wait` uni "yiqildi" deb hisoblaydi, shuning uchun alohida kutiladi
+(cd "$ROOT/backend/infra" && docker compose up -d --wait $(docker compose config --services | grep -vx dlx-bootstrap) \
+  && docker compose up --no-deps --exit-code-from dlx-bootstrap dlx-bootstrap >/dev/null)
 "$ROOT/scripts/gen-jwt-keys.sh" >/dev/null
 "$PY" "$ROOT/scripts/dev-env.py" "${SERVICES[@]}"
 
@@ -54,6 +57,11 @@ URI="$(echo "$E2E_ADMIN_PASSWORD" | docker compose run --rm -T admin-service \
 E2E_ADMIN_TOTP_SECRET="$(echo "$URI" | sed -n 's/.*secret=\([A-Z2-7]*\).*/\1/p')"
 [[ -n "$E2E_ADMIN_TOTP_SECRET" ]] || { echo "XATO: admin bootstrap: $URI" >&2; exit 1; }
 export E2E_ADMIN_LOGIN E2E_ADMIN_PASSWORD E2E_ADMIN_TOTP_SECRET
+
+# Lokal Payme/Click kalitlari (dev-env.py tasodifiy yaratgan) — testlar webhook'larni shular bilan imzolaydi
+E2E_PAYME_KEY="$(sed -n 's/^PAYME_SECRET_KEY=//p' "$ROOT/backend/payment-service/.env")"
+E2E_CLICK_KEY="$(sed -n 's/^CLICK_SECRET_KEY=//p' "$ROOT/backend/payment-service/.env")"
+export E2E_PAYME_KEY E2E_CLICK_KEY
 
 echo "==> kong"
 (cd "$ROOT/backend/gateway-kong" && docker compose up -d --wait)

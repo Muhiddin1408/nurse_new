@@ -26,7 +26,15 @@
       "paid_tiyin": 15000000,
       "refund_tiyin": 7500000,
       "penalty_tiyin": 7500000,
-      "previous_status": "confirmed"
+      "previous_status": "confirmed",
+      "money": {
+        "total_tiyin": 15000000,
+        "platform_fee_tiyin": 2250000,
+        "provider_fee_tiyin": 150000,
+        "doctor_payout_tiyin": 12600000,
+        "discount_tiyin": 0,
+        "discount_borne_by": ""
+      }
     }
   }
 }

@@ -1,5 +1,5 @@
 # Kong (DB-less, deklarativ) — DEV. ARCHITECTURE.md 12: strangler-fig.
-# /api/* — monolit (frontend /v1/* ga bosqichma-bosqich o'tadi). /v1/* — yangi servislar (2: identity, 3: asosiy domen).
+# /api/* — monolit (frontend /v1/* ga bosqichma-bosqich o'tadi). /v1/* — yangi servislar (2: identity, 3: asosiy domen, 4: pul).
 # /internal/* tashqariga HECH QACHON ochilmaydi. Servislar `medbron-net` da: http://<servis>:8080.
 # Har servis X-Real-IP (Kong o'zi qo'yadi) bo'yicha mijoz IP'sini oladi.
 _format_version: "3.0"
@@ -192,6 +192,51 @@ services:
         strip_path: false
       - name: booking-clinic
         paths: ['~/v1/clinic/[^/]+/appointments(/|$)']
+        strip_path: false
+        regex_priority: 10
+
+  # --- 4-bosqich: pul ------------------------------------------------------------------
+  - name: payment-service
+    url: http://payment-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0            # to'lov POST hech qachon takrorlanmaydi — provayder o'zi qayta yuboradi (idempotent)
+    routes:
+      - name: payment-webhooks
+        # Payme/Click kabinetidagi URL. Rate-limit YO'Q (A7: provayder qayta urinishini rad etmaymiz) —
+        # himoya: imzo / Basic Auth + IP allowlist (servisda; prod'da Kong ham — kong.prod.yml, 6-bosqich).
+        paths: ['~/v1/payments/(payme/webhook|click/(prepare|complete))$']
+        methods: [POST]
+        strip_path: false
+        regex_priority: 20
+        plugins:
+          - name: request-size-limiting
+            config: {allowed_payload_size: 64, size_unit: kilobytes}
+      - name: payment-checkout
+        paths: ['~/v1/payments$']
+        methods: [POST]
+        strip_path: false
+        regex_priority: 10
+        plugins:
+          - name: rate-limiting
+            config: {minute: 30, hour: 300, policy: local, limit_by: ip, fault_tolerant: true}
+      - name: payment-api
+        paths: ["/v1/payments", "/v1/admin/payments", "/v1/admin/refunds", "/v1/admin/ledger", "/v1/admin/reconciliation"]
+        strip_path: false
+
+  - name: billing-service
+    url: http://billing-service:8080
+    connect_timeout: 2000
+    read_timeout: 30000   # payout hisoblash (admin build) va CSV ko'chirma
+    write_timeout: 30000
+    retries: 0
+    routes:
+      - name: billing-doctor
+        paths: ["/v1/doctor/earnings", "/v1/doctor/payouts", "/v1/doctor/payout-account", "/v1/admin/payouts"]
+        strip_path: false
+      - name: billing-clinic
+        paths: ['~/v1/clinic/[^/]+/earnings(/|$)']
         strip_path: false
         regex_priority: 10
 

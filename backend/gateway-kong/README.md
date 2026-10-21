@@ -13,7 +13,11 @@ undan oldin eski kirish yo'llarini auth-service'ga yo'naltirish — `docs/runboo
 | `/v1/admin/{admins,roles,permissions,audit,settings}` | admin-service | |
 | `/v1/files`, `/v1/admin/files/` | file-service | Fayl o'zi S3'ga to'g'ridan-to'g'ri (presigned) |
 | `/v1/notifications/`, `/v1/telegram/`, `/v1/admin/notifications/` | notification-service | |
-| `/api/*`, `/admin/`, `/static/` | monolit | OTP 5/daq, qolgan API 50/s |
+| `/v1/catalog/`, `/v1/doctor/*`, `~/v1/clinic/{id}/(profile\|rooms\|doctors\|services)` … | catalog / schedule / pricing / booking | 3-bosqich: `kong.dev.yml` dagi route'lar |
+| `~/v1/payments/(payme/webhook\|click/(prepare\|complete))$` | payment-service | Provayder webhooklari: rate-limit YO'Q, tana ≤ 64 KB, himoya — imzo + IP allowlist |
+| `/v1/payments`, `/v1/admin/{payments,refunds,ledger,reconciliation}` | payment-service | Checkout POST 30/daq |
+| `/v1/doctor/{earnings,payouts,payout-account}`, `~/v1/clinic/{id}/earnings`, `/v1/admin/payouts` | billing-service | |
+| `/api/*`, `/admin/`, `/static/` | monolit | OTP 5/daq, qolgan API 50/s; eski `/api/v1/payment/(payme\|click)/` — cutover'gacha |
 | `/internal/*` | — | har doim 404 (request-termination), hatto xato bilan servis route'i qo'shilsa ham |
 
 - Global: `correlation-id` (`X-Request-ID`), CORS, request-size 10 MB, Prometheus.

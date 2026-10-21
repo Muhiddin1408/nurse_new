@@ -480,6 +480,9 @@ def test_internal_endpoints(client: Client, fakes: FakeDeps, api) -> None:
     payable = api.get(f"/internal/v1/bookings/{b['id']}/payable", headers=payment).json()
     assert payable["payable"] is True and payable["prepay_tiyin"] == b["prepay_tiyin"]
     assert payable["items"][0]["mxik_code"] == "06101001001000000"  # bo'sh kod — admin standarti
+    money = payable["money"]
+    assert money["total_tiyin"] == b["total_tiyin"]
+    assert money["platform_fee_tiyin"] + money["provider_fee_tiyin"] + money["doctor_payout_tiyin"] == b["total_tiyin"]
     r = api.post(f"/internal/v1/bookings/{b['id']}/extend-payment", headers=payment)
     assert r.status_code == 200 and r.json()["payment_due_at"] >= b["payment_due_at"]
     review = {"X-Caller": "review-service", "X-Internal-Token": "test-token"}
