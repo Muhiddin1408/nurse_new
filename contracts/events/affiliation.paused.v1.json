@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/affiliation.paused.v1.json",
+  "title": "affiliation.paused",
+  "description": "Klinika shifokor bilan hamkorlikni vaqtincha to'xtatdi: kelajakdagi bo'sh slotlar yopiladi, mavjud bronlar SAQLANADI.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "affiliation.paused"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "affiliation"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "affiliation_id",
+        "clinic_id",
+        "doctor_id",
+        "paused_by"
+      ],
+      "properties": {
+        "affiliation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "clinic_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "paused_by": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

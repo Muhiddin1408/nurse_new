@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS slots;
+DROP TABLE IF EXISTS price_rules;
+DROP TABLE IF EXISTS time_offs;
+DROP TABLE IF EXISTS clinic_closures;
+DROP TABLE IF EXISTS schedule_exceptions;
+DROP TABLE IF EXISTS working_rules;
+DROP TABLE IF EXISTS affiliations;
+DROP TABLE IF EXISTS clinics;
+DROP TABLE IF EXISTS doctors;

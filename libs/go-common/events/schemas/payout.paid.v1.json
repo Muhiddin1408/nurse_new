@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/payout.paid.v1.json",
+  "title": "payout.paid",
+  "description": "Payout bank orqali o'tkazildi. payment-service ledger'da doctor_payable ni yopadi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "payout.paid"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "payout"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payout_id",
+        "doctor_id",
+        "net_tiyin",
+        "paid_at",
+        "bank_reference",
+        "paid_by"
+      ],
+      "properties": {
+        "payout_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "net_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "paid_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "bank_reference": {
+          "type": "string"
+        },
+        "paid_by": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

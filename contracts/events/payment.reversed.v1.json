@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/payment.reversed.v1.json",
+  "title": "payment.reversed",
+  "description": "Provayder o'zi yechilgan pulni qaytardi (Payme CancelTransaction state=-2). Booking bronni system tomonidan bekor qiladi, qo'shimcha refund kerak emas.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "payment.reversed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "payment"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payment_id",
+        "booking_id",
+        "client_id",
+        "provider",
+        "amount_tiyin",
+        "reversed_at",
+        "provider_reason"
+      ],
+      "properties": {
+        "payment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "client_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "payme",
+            "click",
+            "cash"
+          ]
+        },
+        "amount_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "reversed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "provider_reason": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

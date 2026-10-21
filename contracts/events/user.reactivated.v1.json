@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/user.reactivated.v1.json",
+  "title": "user.reactivated",
+  "description": "Admin bloklangan akkauntni qayta faollashtirdi (o'chirilgan akkaunt qayta tiklanmaydi).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "user.reactivated"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "user"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "reason",
+        "reactivated_by"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "unblocked_by_admin"
+          ]
+        },
+        "reactivated_by": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

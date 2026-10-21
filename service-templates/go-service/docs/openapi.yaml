@@ -1,0 +1,34 @@
+openapi: 3.1.0
+info:
+  title: __SERVICE_NAME__
+  version: 0.1.0
+  description: |
+    Tashqi (/v1) va admin (/v1/admin) API. Internal API — contracts/openapi/__SERVICE_NAME__.internal.yaml.
+    Xato formati: {"detail": {"code": "...", "message": "..."}}.
+paths:
+  /v1/__SHORT__/whoami:
+    get:
+      summary: Shablon namunasi — almashtiring
+      security: [{userJWT: []}]
+      responses:
+        "200": {description: OK}
+        "401": {$ref: "#/components/responses/Error"}
+components:
+  securitySchemes:
+    userJWT: {type: http, scheme: bearer, bearerFormat: JWT}
+    adminJWT: {type: http, scheme: bearer, bearerFormat: JWT}
+  responses:
+    Error:
+      description: Xato
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail:
+                type: object
+                required: [code, message]
+                properties:
+                  code: {type: string}
+                  message: {type: string}

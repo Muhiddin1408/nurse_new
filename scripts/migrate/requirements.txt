@@ -1,0 +1,4 @@
+# scripts/migrate — bir martalik ko'chirish vositalari (servis image'lariga kirmaydi)
+sqlalchemy==2.1.5
+psycopg[binary]==3.2.10
+cryptography==50.0.2

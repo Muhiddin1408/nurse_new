@@ -1,0 +1,135 @@
+# Platforma poydevori: kontraktlar, libs, infra konfiguratsiyasi, servis shablonlari, sirlar.
+# Servislarning o'z pipeline'lari: .github/workflows/svc-<servis>.yml (ci-templates/ dan).
+name: platform
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: contracts-check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r scripts/requirements.txt pytest==9.1.1
+      - name: Generatsiya qilingan event konstantalari yangi
+        run: python scripts/gen-events.py --check
+      - name: Katalog, reestr ↔ katalog, sinxron graf (DAG), kod
+        run: python scripts/check-contracts.py
+      - name: Reestr portlari va .env.example
+        run: python scripts/check-registry.py
+      - name: Tekshiruv skriptlarining o'z testlari
+        run: cd scripts && pytest -q -c pytest.ini
+
+  py-common:
+    runs-on: ubuntu-24.04
+    defaults:
+      run: {working-directory: libs/py-common}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: {version: "0.13.4", enable-cache: true}
+      - run: uv sync --frozen
+      - run: uv run ruff check . && uv run ruff format --check .
+      - run: uv run mypy src
+      - name: Unit + integratsiya (testcontainers — Postgres, RabbitMQ)
+        run: uv run pytest --cov --cov-fail-under=80
+
+  go-common:
+    runs-on: ubuntu-24.04
+    defaults:
+      run: {working-directory: libs/go-common}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: "1.26", cache-dependency-path: libs/go-common/go.sum}
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet -tags integration ./...
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 && golangci-lint run ./...
+      - name: Unit + integratsiya (testcontainers-go)
+        run: go test -tags integration -count=1 -cover ./...
+
+  infra:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prometheus konfiguratsiyasi va alert qoidalari
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/backend/infra/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v3.1.0 check config /etc/prometheus/prometheus.yml
+      - name: Kong deklarativ konfiguratsiyasi
+        run: |
+          for f in backend/gateway-kong/kong.*.yml; do
+            docker run --rm -e KONG_DATABASE=off -v "$PWD/$f:/kong.yml:ro" kong:3.9.1 kong config parse /kong.yml
+          done
+      - name: docker compose fayllari
+        run: |
+          cp backend/infra/.env.example backend/infra/.env
+          sed -i 's/=$/=ci-placeholder/' backend/infra/.env
+          docker compose -f backend/infra/docker-compose.yml config -q
+          docker network create medbron-net
+          docker compose -f backend/gateway-kong/docker-compose.yml config -q
+
+  templates:
+    name: service-templates smoke
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - {service: user-service, lang: py}
+          - {service: schedule-service, lang: go}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r scripts/requirements.txt
+      - uses: astral-sh/setup-uv@v6
+        if: matrix.lang == 'py'
+        with: {version: "0.13.4"}
+      - uses: actions/setup-go@v5
+        if: matrix.lang == 'go'
+        with: {go-version: "1.26", cache: false}
+      - name: Shablondan servis yaratish
+        # Servis repoda allaqachon bo'lishi mumkin (user-service — 2-bosqich): CI workspace vaqtinchalik,
+        # shablonning o'zini tekshirish uchun haqiqiy kod o'rniga toza generatsiya qilinadi.
+        run: |
+          rm -rf backend/${{ matrix.service }}
+          scripts/new-service.sh ${{ matrix.service }} --dest backend/${{ matrix.service }}
+      - name: Python servis — lint, mypy, testlar (integratsiya bilan)
+        if: matrix.lang == 'py'
+        working-directory: backend/${{ matrix.service }}
+        run: |
+          uv sync
+          uv run ruff check . && uv run ruff format --check .
+          uv run mypy app
+          uv run pytest --cov
+      - name: Go servis — fmt, vet, testlar
+        if: matrix.lang == 'go'
+        working-directory: backend/${{ matrix.service }}
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -cover ./...
+      - name: Docker image build
+        run: docker build -f backend/${{ matrix.service }}/Dockerfile -t smoke/${{ matrix.service }}:${{ github.sha }} .
+
+  secrets-scan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

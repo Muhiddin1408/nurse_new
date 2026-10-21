@@ -1,0 +1,224 @@
+# Kong (DB-less, deklarativ) — DEV. ARCHITECTURE.md 12: strangler-fig.
+# /api/* — monolit (frontend /v1/* ga bosqichma-bosqich o'tadi). /v1/* — yangi servislar (2: identity, 3: asosiy domen).
+# /internal/* tashqariga HECH QACHON ochilmaydi. Servislar `medbron-net` da: http://<servis>:8080.
+# Har servis X-Real-IP (Kong o'zi qo'yadi) bo'yicha mijoz IP'sini oladi.
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: monolith
+    # Monolit o'tish davrida host'da 8099 portda: `manage.py runserver 0.0.0.0:8099`
+    # (8000 — Kong'ning o'zi; 8000 ga yo'naltirish proksi sikliga olib keladi).
+    url: http://host.docker.internal:8099
+    connect_timeout: 2000
+    read_timeout: 30000
+    write_timeout: 30000
+    retries: 0            # POST takrorlanmasin (to'lov, bron) — idempotentlik klient kalitida
+    routes:
+      - name: monolith-otp
+        paths: ["~/api/v1/accounts/auth/otp/"]
+        strip_path: false
+        plugins:
+          # Qattiq limit (BLUEPRINT 6.6). Telefon bo'yicha limit servis ichida — bu IP bo'yicha.
+          - name: rate-limiting
+            config: {minute: 5, hour: 20, policy: local, limit_by: ip, fault_tolerant: true}
+      - name: monolith-payment-webhooks
+        paths: ["~/api/v1/payment/(payme|click)/"]
+        strip_path: false
+        # Provayder IP allowlist prod konfiguratsiyasida (kong.prod.yml, 6-bosqich).
+      - name: monolith-api
+        paths: ["/api/"]
+        strip_path: false
+        plugins:
+          - name: rate-limiting
+            config: {second: 50, minute: 1200, policy: local, limit_by: ip, fault_tolerant: true}
+      - name: monolith-admin-static
+        paths: ["/admin/", "/static/"]
+        strip_path: false
+
+  # --- 2-bosqich: identity ---------------------------------------------------------------
+  - name: auth-service
+    url: http://auth-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: auth-otp
+        paths: ["/v1/auth/otp/"]
+        strip_path: false
+        plugins:
+          # IP bo'yicha limit (BLUEPRINT 6.6); telefon bo'yicha — auth-service ichida (Redis).
+          # DEV: e2e testlar bitta IP'dan ketma-ket kiradi — 30/daq. PROD (kong.prod.yml): 5/daq, 20/soat.
+          - name: rate-limiting
+            config: {minute: 30, hour: 300, policy: local, limit_by: ip, fault_tolerant: true}
+      - name: auth-api
+        paths: ["/v1/auth/"]
+        strip_path: false
+      - name: auth-admin-users
+        paths: ["/v1/admin/users"]
+        strip_path: false
+
+  - name: user-service
+    url: http://user-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: user-api
+        paths: ["/v1/users/"]
+        strip_path: false
+      - name: user-admin-profile
+        # /v1/admin/users/{id}/profile — user-service (qolgan /v1/admin/users — auth-service)
+        paths: ['~/v1/admin/users/[0-9a-fA-F-]{36}/profile$']
+        strip_path: false
+        regex_priority: 10
+
+  - name: admin-service
+    url: http://admin-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: admin-login
+        paths: ["/v1/admin/auth/"]
+        strip_path: false
+        plugins:
+          - name: rate-limiting
+            config: {minute: 10, hour: 60, policy: local, limit_by: ip, fault_tolerant: true}
+      - name: admin-api
+        paths: ["/v1/admin/admins", "/v1/admin/roles", "/v1/admin/permissions", "/v1/admin/audit", "/v1/admin/settings"]
+        strip_path: false
+
+  - name: file-service
+    url: http://file-service:8080
+    connect_timeout: 2000
+    read_timeout: 30000
+    write_timeout: 30000
+    retries: 0
+    routes:
+      - name: file-api
+        paths: ["/v1/files", "/v1/admin/files/"]
+        strip_path: false
+
+  - name: notification-service
+    url: http://notification-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: notification-api
+        paths: ["/v1/notifications/", "/v1/telegram/", "/v1/admin/notifications/"]
+        strip_path: false
+
+  # --- 3-bosqich: asosiy domen (ADR-0011) ------------------------------------------------
+  - name: catalog-service
+    url: http://catalog-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: catalog-public
+        paths: ["/v1/catalog/"]
+        strip_path: false
+      - name: catalog-doctor
+        paths:
+          - /v1/doctor/onboarding/
+          - /v1/doctor/profile
+          - /v1/doctor/license
+          - /v1/doctor/services
+          - /v1/doctor/clinic-invites
+          - /v1/doctor/affiliations
+        strip_path: false
+      - name: catalog-clinic
+        # /v1/clinic/{id}/schedule|closures|rules — schedule, .../appointments — booking
+        paths: ["/v1/clinic/mine", '~/v1/clinic/[^/]+/(profile|rooms|doctors|services)(/|$)']
+        strip_path: false
+        regex_priority: 10
+      - name: catalog-admin
+        paths: ["/v1/admin/moderation/", "/v1/admin/clinics", "/v1/admin/specializations"]
+        strip_path: false
+
+  - name: schedule-service
+    url: http://schedule-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: schedule-public
+        paths: ["/v1/schedule/"]
+        strip_path: false
+      - name: schedule-doctor
+        paths: ["/v1/doctor/schedule", "/v1/doctor/price-rules"]
+        strip_path: false
+      - name: schedule-clinic
+        paths: ['~/v1/clinic/[^/]+/(schedule|closures|rules)(/|$)']
+        strip_path: false
+        regex_priority: 10
+
+  - name: pricing-service
+    url: http://pricing-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: pricing-api
+        paths: ["/v1/pricing/", "/v1/doctor/packages", "/v1/admin/promo-codes"]
+        strip_path: false
+
+  - name: booking-service
+    url: http://booking-service:8080
+    connect_timeout: 2000
+    read_timeout: 30000   # yaratish sagasi 5 servisga boradi
+    write_timeout: 30000
+    retries: 0            # bron POST — idempotentlik `Idempotency-Key` da
+    routes:
+      - name: booking-create
+        paths: ['~/v1/bookings$']
+        methods: [POST]
+        strip_path: false
+        regex_priority: 20
+        plugins:
+          - name: rate-limiting
+            config: {minute: 20, hour: 200, policy: local, limit_by: ip, fault_tolerant: true}
+      - name: booking-api
+        paths: ["/v1/bookings", "/v1/waitlist", "/v1/doctor/appointments", "/v1/admin/bookings"]
+        strip_path: false
+      - name: booking-clinic
+        paths: ['~/v1/clinic/[^/]+/appointments(/|$)']
+        strip_path: false
+        regex_priority: 10
+
+  # /internal/* ataylab "qora tuynuk" — hatto xato bilan servis route'i qo'shilsa ham yopiq qoladi.
+  - name: internal-blackhole
+    url: http://127.0.0.1:1
+    routes:
+      - name: internal-deny
+        paths: ["/internal"]
+        strip_path: false
+        regex_priority: 1000
+    plugins:
+      - name: request-termination
+        config: {status_code: 404, content_type: application/json, body: '{"detail":{"code":"HTTP_404","message":"Not Found"}}'}
+
+plugins:
+  - name: correlation-id
+    config: {header_name: X-Request-ID, generator: uuid, echo_downstream: true}
+  - name: cors
+    config:
+      origins: ["http://localhost:5173", "http://127.0.0.1:5173"]
+      methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+      headers: [Authorization, Content-Type, Idempotency-Key, X-Request-ID, Accept-Language]
+      exposed_headers: [X-Request-ID]
+      credentials: true
+      max_age: 600
+  - name: request-size-limiting
+    config: {allowed_payload_size: 10, size_unit: megabytes}
+  - name: prometheus
+    config: {status_code_metrics: true, latency_metrics: true, upstream_health_metrics: true}

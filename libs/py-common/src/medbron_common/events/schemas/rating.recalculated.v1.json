@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/rating.recalculated.v1.json",
+  "title": "rating.recalculated",
+  "description": "Shifokor (va klinika) reytingi qayta hisoblandi. rating=null — sharhlar soni minimaldan kam.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "rating.recalculated"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "doctor"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor_id",
+        "rating",
+        "reviews_count",
+        "clinic_id",
+        "clinic_rating",
+        "clinic_reviews_count"
+      ],
+      "properties": {
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "rating": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "reviews_count": {
+          "type": "integer"
+        },
+        "clinic_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "clinic_rating": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "clinic_reviews_count": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/schedule.availability_changed.v1.json",
+  "title": "schedule.availability_changed",
+  "description": "Shifokorning bo'sh vaqtlari o'zgardi (debounce: 5 soniyada bir marta har shifokor uchun). Search `next_available_at` ni yangilaydi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "schedule.availability_changed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "doctor"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor_id",
+        "dates",
+        "next_available_at"
+      ],
+      "properties": {
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "dates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "next_available_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

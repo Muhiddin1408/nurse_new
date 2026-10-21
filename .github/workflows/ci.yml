@@ -12,7 +12,30 @@ name: ci
 
 on:
   push:
+    paths-ignore:
+      # Mikroservis platformasi o'z pipeline'larida tekshiriladi (platform.yml, svc-*.yml).
+      - backend/**
+      - libs/**
+      - contracts/**
+      - service-templates/**
+      - ci-templates/**
+      - scripts/**
+      - docs/**
+      - .github/workflows/platform.yml
+      - .github/workflows/_*.yml
+      - .github/workflows/svc-*.yml
   pull_request:
+    paths-ignore:
+      - backend/**
+      - libs/**
+      - contracts/**
+      - service-templates/**
+      - ci-templates/**
+      - scripts/**
+      - docs/**
+      - .github/workflows/platform.yml
+      - .github/workflows/_*.yml
+      - .github/workflows/svc-*.yml
 
 jobs:
   test:

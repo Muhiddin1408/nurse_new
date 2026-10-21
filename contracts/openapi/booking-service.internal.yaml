@@ -1,0 +1,90 @@
+openapi: 3.1.0
+info:
+  title: booking-service — internal API
+  version: 1.0.0
+  description: |
+    Chaqiruvchilar: payment-service, review-service, dispute-service, ws-gateway (4–5-bosqich). 3-bosqichda
+    kontrakt va implementatsiya tayyor, iste'molchilar keyin ulanadi. Pul — tiyin.
+servers: [{url: "http://booking-service:8080"}]
+security: [{internal: []}]
+components:
+  securitySchemes:
+    internal: {type: apiKey, in: header, name: X-Internal-Token}
+paths:
+  /internal/v1/bookings/{booking_id}/payable:
+    get:
+      summary: payment uchun — to'lash mumkinmi va qancha
+      parameters: [{name: booking_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [booking_id, number, status, client_id, doctor_id, payable, prepay_tiyin, total_tiyin, payment_mode, payment_due_at, items]
+                properties:
+                  booking_id: {type: string, format: uuid}
+                  number: {type: string}
+                  status: {type: string}
+                  client_id: {type: string, format: uuid}
+                  doctor_id: {type: string, format: uuid}
+                  payable: {type: boolean, description: "pending_payment VA payment_due_at > now"}
+                  prepay_tiyin: {type: integer}
+                  total_tiyin: {type: integer}
+                  payment_mode: {type: string}
+                  payment_due_at: {type: [string, "null"], format: date-time}
+                  items:
+                    type: array
+                    description: fiskal chek elementlari
+                    items:
+                      type: object
+                      required: [service_name, price_tiyin, mxik_code, package_code, vat_percent]
+                      properties:
+                        service_name: {type: string}
+                        price_tiyin: {type: integer}
+                        mxik_code: {type: string}
+                        package_code: {type: string}
+                        vat_percent: {type: integer}
+        "404": {description: BOOKING_NOT_FOUND}
+  /internal/v1/bookings/{booking_id}/extend-payment:
+    post:
+      summary: To'lov provayderi tranzaksiya ochganda — hold va payment_due_at uzaytiriladi (≤ 15 daq, faqat uzaytirish)
+      parameters: [{name: booking_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: "{payment_due_at}"}
+        "409": {description: NOT_PAYABLE}
+  /internal/v1/bookings/{booking_id}/review-eligibility:
+    get:
+      parameters:
+        - {name: booking_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: client_id, in: query, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [eligible, reason, doctor_id, completed_at]
+                properties:
+                  eligible: {type: boolean}
+                  reason: {type: string, enum: ["", not_owner, not_completed, window_closed]}
+                  doctor_id: {type: [string, "null"], format: uuid}
+                  completed_at: {type: [string, "null"], format: date-time}
+  /internal/v1/bookings/{booking_id}/summary:
+    get:
+      summary: dispute uchun — egasi tekshiriladi (boshqasiniki — 404)
+      parameters:
+        - {name: booking_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: user_id, in: query, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: "{booking_id, number, status, client_id, doctor_id, start_at, paid_tiyin, total_tiyin}"}
+        "404": {description: BOOKING_NOT_FOUND}
+  /internal/v1/bookings/{booking_id}/authz:
+    get:
+      summary: ws-gateway uchun — user shu bron kanaliga obuna bo'la oladimi (mijoz yoki shifokor)
+      parameters:
+        - {name: booking_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: user_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: doctor_id, in: query, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: "{allowed: bool}"}

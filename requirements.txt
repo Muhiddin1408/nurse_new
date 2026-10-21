@@ -5,6 +5,7 @@
 Django==6.0.7
 djangorestframework==3.17.1
 djangorestframework_simplejwt==5.5.1
+cryptography==50.0.2        # RS256: auth-service tokenlari (api/auth_bridge.py, 2-bosqich)
 django-jazzmin==3.0.5
 drf-spectacular==0.28.0      # Swagger / OpenAPI (/api/docs/)
 whitenoise==6.9.0            # admin static fayllari (gunicorn ortida, alohida nginx'siz)

@@ -1,0 +1,5 @@
+{
+  "description": "Python key_id() va Go auth.KeyID() bir xil natija berishi kerak. Faqat PUBLIC key (sir emas).",
+  "public_pem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5iCya8zVxNftZHHmSeFq\njfDAoZFnUJL7Lii7N+2BH6++h8tP8g/ROB259WGbHozbHN4KWvN20cjidJvYq653\nJg+B6tQUht2J+g8S2pGCrs7V2o+6HeUArGZpKjjLQ3vNNOaNfq6ZlV8zzw4B6Bxc\n0sHVEepgf0MqpLIkQ5L7mm47o4b9erc0GMm1+Z0sPIzKclBMRruu6ndXfrkrnHYT\nEYJOkUc/FjiZ4OG4O7+IGsxLQ8lPgKpvO5Oy0nyrqF4BM3syIWqWU6Mt89XZtLjT\nrCK7lgLNaFW/vh4wyTJVdv5+SjYh2GGZ8Tb5C2MgtTBlHU43hn6tIesyALf3Gtdm\nPQIDAQAB\n-----END PUBLIC KEY-----\n",
+  "kid": "zKhtTUAC-e1Q5dcj"
+}

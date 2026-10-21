@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/dispute.resolved.v1.json",
+  "title": "dispute.resolved",
+  "description": "Nizo hal qilindi. refund_tiyin>0 bo'lsa payment-service refund qiladi; billing payout'dan ushlaydi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "dispute.resolved"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "dispute"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispute_id",
+        "booking_id",
+        "raised_by",
+        "resolution",
+        "refund_tiyin",
+        "doctor_liable",
+        "resolved_by",
+        "resolved_at"
+      ],
+      "properties": {
+        "dispute_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "raised_by": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "refund_full",
+            "refund_partial",
+            "rejected"
+          ]
+        },
+        "refund_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "doctor_liable": {
+          "type": "boolean"
+        },
+        "resolved_by": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "resolved_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

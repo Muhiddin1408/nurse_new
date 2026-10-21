@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/dispute.sla_breached.v1.json",
+  "title": "dispute.sla_breached",
+  "description": "Nizo SLA muddatida hal qilinmadi — eskalatsiya.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "dispute.sla_breached"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "dispute"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispute_id",
+        "booking_id",
+        "due_at"
+      ],
+      "properties": {
+        "dispute_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "due_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

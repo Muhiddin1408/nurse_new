@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/doctor.suspended.v1.json",
+  "title": "doctor.suspended",
+  "description": "Shifokor to'xtatildi: qidiruvdan yashiriladi, yangi bron qabul qilinmaydi, kelajakdagi bronlar bekor qilinadi (100% refund).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "doctor.suspended"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "doctor"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor_id",
+        "user_id",
+        "reason",
+        "suspended_by"
+      ],
+      "properties": {
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "suspended_by": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

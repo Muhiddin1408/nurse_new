@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/service.created.v1.json",
+  "title": "service.created",
+  "description": "Yangi xizmat (konsultatsiya, ukol, UZI...) qo'shildi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "service.created"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "service"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "clinic_id",
+        "doctor_id",
+        "specialization_id",
+        "name",
+        "name_ru",
+        "place",
+        "duration_minutes",
+        "price_tiyin",
+        "is_active"
+      ],
+      "properties": {
+        "service_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "clinic_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "specialization_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "name_ru": {
+          "type": "string"
+        },
+        "place": {
+          "type": "string",
+          "enum": [
+            "clinic",
+            "home"
+          ]
+        },
+        "duration_minutes": {
+          "type": "integer"
+        },
+        "price_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "is_active": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/doctor.profile_updated.v1.json",
+  "title": "doctor.profile_updated",
+  "description": "Ommaviy profil maydonlari o'zgardi (bio, tajriba, tillar, uy chaqiruvi sozlamalari). Telegram chat — notification-service egaligida.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "doctor.profile_updated"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "doctor"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor_id",
+        "user_id",
+        "full_name",
+        "specialization_ids",
+        "experience_years",
+        "languages",
+        "accepts_home_visits",
+        "home_visit_radius_km",
+        "photo_file_id"
+      ],
+      "properties": {
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "specialization_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "experience_years": {
+          "type": "integer"
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "accepts_home_visits": {
+          "type": "boolean"
+        },
+        "home_visit_radius_km": {
+          "type": "integer"
+        },
+        "photo_file_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

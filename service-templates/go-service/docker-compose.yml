@@ -1,0 +1,130 @@
+# __SERVICE_NAME__ (Go) — o'z Postgres (+ Redis, reestrda bo'lsa; faqat ichki tarmoqda!), API, outbox relay, event consumer.
+# Avval: backend/infra ko'tarilgan (medbron-net, RabbitMQ) va scripts/gen-jwt-keys.sh.
+#
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d --build
+#   docker compose --profile migrate run --rm __SERVICE_NAME__-migrate     # migratsiya — alohida qadam
+name: __SERVICE_NAME__
+
+networks:
+  internal: {}
+  medbron-net:
+    external: true
+
+volumes:
+  postgres-data:
+# >>> redis
+  redis-data:
+# <<< redis
+
+x-app: &app
+  image: ${IMAGE_REPO:-medbron/__SERVICE_NAME__}:${IMAGE_TAG:?IMAGE_TAG (commit SHA) majburiy}
+  build:
+    context: ../..
+    dockerfile: backend/__SERVICE_NAME__/Dockerfile
+  init: true
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    DATABASE_URL_DOCKER: postgres://__SERVICE_SLUG__:${POSTGRES_PASSWORD:?}@__SERVICE_NAME__-postgres:5432/__SERVICE_SLUG__?sslmode=disable
+# >>> redis
+    REDIS_URL: redis://:${REDIS_PASSWORD:?}@__SERVICE_NAME__-redis:6379/0
+# <<< redis
+    RABBITMQ_URL: amqp://${RABBITMQ_USER:?}:${RABBITMQ_PASSWORD:?}@medbron-rabbitmq:5672/
+  volumes:
+    - ${SECRETS_DIR:-../../secrets}/public:/secrets:ro
+  networks: [internal, medbron-net]
+  depends_on:
+    __SERVICE_NAME__-postgres:
+      condition: service_healthy
+# >>> redis
+    __SERVICE_NAME__-redis:
+      condition: service_healthy
+# <<< redis
+
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD", "/usr/local/bin/healthcheck", "http://127.0.0.1:9100/"]
+  interval: 15s
+  timeout: 3s
+  retries: 3
+  start_period: 10s
+
+services:
+  __SERVICE_NAME__-postgres:
+    image: postgres:16-alpine
+    container_name: __SERVICE_NAME__-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: __SERVICE_SLUG__
+      POSTGRES_USER: __SERVICE_SLUG__
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env da majburiy}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:?}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U __SERVICE_SLUG__ -d __SERVICE_SLUG__"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks: [internal]
+
+# >>> redis
+  __SERVICE_NAME__-redis:
+    image: redis:7.4-alpine
+    container_name: __SERVICE_NAME__-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD .env da majburiy}", "--appendonly", "yes"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:?}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks: [internal]
+# <<< redis
+
+  __SERVICE_NAME__:
+    <<: *app
+    container_name: __SERVICE_NAME__
+    ports:
+      - "${HOST_PORT:?}:8080"
+
+# >>> relay
+  __SERVICE_NAME__-outbox-relay:
+    <<: *app
+    container_name: __SERVICE_NAME__-outbox-relay
+    command: ["/usr/local/bin/__SHORT__-relay"]
+    healthcheck: *worker-healthcheck
+# <<< relay
+
+# >>> consumer
+  __SERVICE_NAME__-event-consumer:
+    <<: *app
+    container_name: __SERVICE_NAME__-event-consumer
+    command: ["/usr/local/bin/__SHORT__-consumer"]
+    healthcheck: *worker-healthcheck
+# <<< consumer
+
+  __SERVICE_NAME__-migrate:
+    image: migrate/migrate:v4.18.1
+    container_name: __SERVICE_NAME__-migrate
+    restart: "no"
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      - -path=/migrations
+      - -database=postgres://__SERVICE_SLUG__:${POSTGRES_PASSWORD:?}@__SERVICE_NAME__-postgres:5432/__SERVICE_SLUG__?sslmode=disable
+      - up
+    depends_on:
+      __SERVICE_NAME__-postgres:
+        condition: service_healthy
+    networks: [internal]
+    profiles: [migrate]

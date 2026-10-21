@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/user.profile_updated.v1.json",
+  "title": "user.profile_updated",
+  "description": "Profil (ism, til) o'zgardi — bildirishnoma kontakt proyeksiyasi yangilanadi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "user.profile_updated"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "user"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "full_name",
+        "preferred_language"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "preferred_language": {
+          "type": "string",
+          "enum": [
+            "uz",
+            "ru"
+          ]
+        }
+      }
+    }
+  }
+}

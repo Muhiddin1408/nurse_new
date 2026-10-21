@@ -1,0 +1,35 @@
+# Servis pipeline'i — scripts/new-service.sh buni .github/workflows/svc-__SERVICE_NAME__.yml ga ko'chiradi.
+# Mantiq qayta ishlatiladigan workflow'larda (.github/workflows/_service-*.yml) — servislar orasida
+# farqlanib ketmaydi (Trasso #7 ning CI ko'rinishi).
+name: svc-__SERVICE_NAME__
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - backend/__SERVICE_NAME__/**
+      - __LIB_PATH__/**
+      - contracts/**
+      - .github/workflows/svc-__SERVICE_NAME__.yml
+      - .github/workflows/__REUSABLE__
+      - .github/workflows/_build-deploy.yml
+  pull_request:
+    paths:
+      - backend/__SERVICE_NAME__/**
+      - __LIB_PATH__/**
+      - contracts/**
+
+concurrency:
+  group: svc-__SERVICE_NAME__-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  pipeline:
+    uses: ./.github/workflows/__REUSABLE__
+    with:
+      service: __SERVICE_NAME__
+    secrets: inherit

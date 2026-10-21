@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/clinic.member_removed.v1.json",
+  "title": "clinic.member_removed",
+  "description": "Klinika adminligi olindi; boshqa klinikada a'zolik qolmasa auth rolni olib tashlaydi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "clinic.member_removed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "clinic"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clinic_id",
+        "user_id",
+        "remaining_clinics"
+      ],
+      "properties": {
+        "clinic_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "remaining_clinics": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

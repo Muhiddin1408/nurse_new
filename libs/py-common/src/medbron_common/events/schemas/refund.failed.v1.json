@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/refund.failed.v1.json",
+  "title": "refund.failed",
+  "description": "Refund MAX_ATTEMPTS dan keyin ham amalga oshmadi — qo'lda aralashuv kerak (alert).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "refund.failed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "refund"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "refund_id",
+        "payment_id",
+        "booking_id",
+        "amount_tiyin",
+        "attempts",
+        "last_error"
+      ],
+      "properties": {
+        "refund_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "payment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "amount_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "attempts": {
+          "type": "integer"
+        },
+        "last_error": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

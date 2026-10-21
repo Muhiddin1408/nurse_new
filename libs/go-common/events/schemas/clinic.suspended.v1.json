@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/clinic.suspended.v1.json",
+  "title": "clinic.suspended",
+  "description": "Klinika to'xtatildi: undagi kelajakdagi bronlar bekor qilinadi (100% refund).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "clinic.suspended"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "clinic"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clinic_id",
+        "reason",
+        "suspended_by"
+      ],
+      "properties": {
+        "clinic_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "suspended_by": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

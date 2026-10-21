@@ -1,0 +1,77 @@
+# Har servis /metrics ni ichki portda (8080) beradi — docs/SERVICE_REGISTRY.md.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: medbron-services
+    static_configs:
+      - targets:
+          - auth-service:8080
+          - user-service:8080
+          - admin-service:8080
+          - file-service:8080
+          - notification-service:8080
+          - catalog-service:8080
+          - schedule-service:8080
+          - pricing-service:8080
+          - booking-service:8080
+          - payment-service:8080
+          - billing-service:8080
+          - review-service:8080
+          - dispute-service:8080
+          - search-service:8080
+          - analytics-service:8080
+          - ws-gateway:8080
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+):.*"
+        target_label: service
+
+  # Outbox relay va event consumer konteynerlari /metrics ni 9100 portda beradi (WORKER_METRICS_PORT).
+  # Ro'yxat: publisher servislar → <svc>-outbox-relay, consumer servislar → <svc>-event-consumer.
+  - job_name: medbron-workers
+    static_configs:
+      - targets:
+          - auth-service-outbox-relay:9100
+          - user-service-outbox-relay:9100
+          - admin-service-outbox-relay:9100
+          - file-service-outbox-relay:9100
+          - catalog-service-outbox-relay:9100
+          - schedule-service-outbox-relay:9100
+          - pricing-service-outbox-relay:9100
+          - booking-service-outbox-relay:9100
+          - payment-service-outbox-relay:9100
+          - billing-service-outbox-relay:9100
+          - review-service-outbox-relay:9100
+          - dispute-service-outbox-relay:9100
+          - auth-service-event-consumer:9100
+          - user-service-event-consumer:9100
+          - admin-service-event-consumer:9100
+          - notification-service-event-consumer:9100
+          - catalog-service-event-consumer:9100
+          - schedule-service-event-consumer:9100
+          - pricing-service-event-consumer:9100
+          - booking-service-event-consumer:9100
+          - payment-service-event-consumer:9100
+          - billing-service-event-consumer:9100
+          - review-service-event-consumer:9100
+          - dispute-service-event-consumer:9100
+          - search-service-event-consumer:9100
+          - analytics-service-event-consumer:9100
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "(.+-service)-(outbox-relay|event-consumer):.*"
+        target_label: service
+      - source_labels: [__address__]
+        regex: "(.+-service)-(outbox-relay|event-consumer):.*"
+        target_label: worker
+        replacement: "$2"
+
+  - job_name: rabbitmq
+    metrics_path: /metrics/per-object
+    static_configs:
+      - targets: [medbron-rabbitmq:15692]

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/waitlist.slot_offered.v1.json",
+  "title": "waitlist.slot_offered",
+  "description": "Navbatdagi mijozga bo'shagan vaqt taklif qilindi (15 daqiqa ichida bron qilsa ustunlik).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "waitlist.slot_offered"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "waitlist"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_id",
+        "client_id",
+        "doctor_id",
+        "slot_id",
+        "start_at",
+        "offer_expires_at"
+      ],
+      "properties": {
+        "entry_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "client_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "slot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "offer_expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

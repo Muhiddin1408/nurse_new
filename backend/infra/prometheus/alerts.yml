@@ -1,0 +1,84 @@
+# BLUEPRINT 11 / ARCHITECTURE.md 10 — majburiy alertlar.
+groups:
+  - name: medbron-eventbus
+    rules:
+      - alert: DeadLetterQueueNotEmpty
+        expr: max(rabbitmq_queue_messages{queue="medbron.dlq"}) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "DLQ bo'sh emas ({{ $value }} xabar)"
+          description: "Consumer eventni qayta ishlay olmadi. docs/runbooks/dlq.md bo'yicha tekshiring va replay qiling."
+      - alert: ConsumerDeadLettering
+        expr: sum by (service, event_type) (increase(events_consumed_total{result="dead_letter"}[5m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }}: {{ $labels.event_type }} DLQ ga tushdi"
+      - alert: OutboxEventFailed
+        expr: sum by (service, event_type) (increase(outbox_failed_total[10m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }}: outbox event `failed` ({{ $labels.event_type }})"
+          description: "Event MAX urinishdan keyin ham brokerga chiqmadi — qo'lda tekshirib `pending` qiling."
+      - alert: OutboxPendingGrowing
+        expr: outbox_pending > 100 and deriv(outbox_pending[5m]) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }}: outbox navbati o'smoqda ({{ $value }})"
+      - alert: ConsumerLagHigh
+        expr: histogram_quantile(0.95, sum by (service, le) (rate(consumer_lag_seconds_bucket[5m]))) > 60
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }}: event kechikishi p95 > 60s"
+
+  - name: medbron-money
+    rules:
+      - alert: BookingConfirmationFailed
+        # Pul yechilgan, lekin bron tasdiqlanmagan — avtomatik refund boshlanadi, lekin har holat ko'rib chiqiladi.
+        expr: sum(increase(outbox_published_total{event_type="booking.confirmation_failed"}[15m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "booking.confirmation_failed: pul yechilgan, bron yo'q"
+      - alert: RefundFailed
+        expr: sum(increase(outbox_published_total{event_type="refund.failed"}[15m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Refund MAX urinishdan keyin ham amalga oshmadi — qo'lda aralashuv"
+      - alert: PaymentDiscrepancy
+        expr: sum(increase(outbox_published_total{event_type="payment.discrepancy_found"}[1h])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Reconciliation provayder bilan farq topdi"
+
+  - name: medbron-http
+    rules:
+      - alert: ServiceDown
+        expr: up{job="medbron-services"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }} javob bermayapti"
+      - alert: High5xxRate
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5.."}[5m]))
+            / sum by (service) (rate(http_requests_total[5m])) > 0.01
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }}: 5xx ulushi > 1%"
+      - alert: SlotEndpointSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{
+            service="schedule-service", route="/v1/schedule/doctors/{doctor_id}/slots"}[5m]))) > 0.1
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Slot endpointi p95 > 100ms (SLA)"
+      - alert: CircuitBreakerOpen
+        expr: max by (service, target) (circuit_breaker_open) == 1
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }} → {{ $labels.target }} circuit ochiq"
