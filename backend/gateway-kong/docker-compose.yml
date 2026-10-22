@@ -35,7 +35,7 @@ services:
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
-      - "8000:8000"
+      - "${KONG_HTTP_PORT:-8000}:8000"   # prod: 127.0.0.1:8800 (faqat Caddy orqali)
       - "127.0.0.1:8100:8001"
     healthcheck:
       test: ["CMD", "kong", "health"]
