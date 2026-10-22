@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2E: infra + ko'chirilgan servislar (2: identity, 3: asosiy domen, 4: pul) + Kong ni Docker'da ko'taradi va
+# E2E: infra + ko'chirilgan servislar (2: identity, 3: asosiy domen, 4: pul, 5: real-time va qo'shimchalar) + Kong ni Docker'da ko'taradi va
 # tests/e2e ni ishga tushiradi.
 #
 #   scripts/e2e.sh            # ko'tarish (build), migratsiya, admin bootstrap, testlar
@@ -15,6 +15,7 @@ SERVICES=(
   file-service admin-service auth-service user-service notification-service
   catalog-service schedule-service pricing-service booking-service
   payment-service billing-service
+  review-service dispute-service search-service analytics-service ws-gateway
 )
 PY="${PYTHON:-python3}"
 BUILD=1
@@ -43,8 +44,13 @@ for s in "${SERVICES[@]}"; do
   echo "==> $s"
   cd "$ROOT/backend/$s"
   if (( BUILD )); then docker compose build -q; fi
-  docker compose up -d --wait "$s-postgres" $(docker compose config --services | grep -x "$s-redis" || true)
-  docker compose --profile migrate run --rm "$s-migrate" >/dev/null
+  # Ma'lumot konteynerlari (Postgres / Redis / Elasticsearch / ClickHouse — bor bo'lganlari) va migratsiya (bo'lsa)
+  DATA="$(docker compose config --services | grep -xE "$s-(postgres|redis|elasticsearch|clickhouse)" || true)"
+  # shellcheck disable=SC2086
+  [[ -n "$DATA" ]] && docker compose up -d --wait $DATA
+  if docker compose --profile migrate config --services | grep -qx "$s-migrate"; then
+    docker compose --profile migrate run --rm "$s-migrate" >/dev/null
+  fi
   docker compose up -d --wait
 done
 

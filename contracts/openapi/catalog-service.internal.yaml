@@ -4,7 +4,8 @@ info:
   version: 1.0.0
   description: |
     Faqat servislararo (`X-Internal-Token` + `X-Caller`). Kong `/internal/*` ni ochmaydi.
-    Ruxsat etilgan chaqiruvchilar: schedule-service, pricing-service, booking-service, billing-service.
+    Ruxsat etilgan chaqiruvchilar: schedule-service, pricing-service, booking-service, billing-service,
+    search-service (faqat `/internal/v1/export/*` — reindex).
     Pul — tiyin (butun son). Vaqt — RFC 3339 UTC. Xato formati: `{"detail": {"code", "message"}}`.
     Chaqiruvchilar natijani qisqa keshlashi mumkin (bookability/access — 60 s, services — 60 s).
 servers: [{url: "http://catalog-service:8080"}]
@@ -13,6 +14,19 @@ components:
   securitySchemes:
     internal: {type: apiKey, in: header, name: X-Internal-Token}
   schemas:
+    ExportService:
+      type: object
+      required: [id, doctor_id, clinic_id, specialization_id, name, name_ru, place, duration_minutes, price_tiyin]
+      properties:
+        id: {type: string, format: uuid}
+        doctor_id: {type: [string, "null"], format: uuid}
+        clinic_id: {type: [string, "null"], format: uuid}
+        specialization_id: {type: string, format: uuid}
+        name: {type: string}
+        name_ru: {type: string}
+        place: {type: string, enum: [clinic, home]}
+        duration_minutes: {type: integer}
+        price_tiyin: {type: integer}
     Point:
       type: object
       required: [lat, lng]
@@ -143,3 +157,104 @@ paths:
       responses:
         "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Room"}}}}
         "404": {description: ROOM_NOT_FOUND}
+  # --- search-service reindex (2026-10-21): keyset sahifalash `id` bo'yicha, faqat ommaviy maydonlar ---------
+  /internal/v1/export/doctors:
+    get:
+      summary: "`approved` va `suspended` shifokorlar — faol/to'xtatilgan hamkorliklar va faol xizmatlar bilan"
+      parameters:
+        - {name: after, in: query, schema: {type: string, format: uuid}, description: "oldingi sahifaning next_after"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_after]
+                properties:
+                  next_after: {type: [string, "null"], format: uuid, description: "null — oxirgi sahifa"}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [doctor_id, user_id, full_name, status, specialization_ids, experience_years, languages,
+                                 accepts_home_visits, home_visit_radius_km, home_base, photo_file_id, rating,
+                                 reviews_count, affiliations, services]
+                      properties:
+                        doctor_id: {type: string, format: uuid}
+                        user_id: {type: string, format: uuid}
+                        full_name: {type: string}
+                        status: {type: string, enum: [approved, suspended]}
+                        specialization_ids: {type: array, items: {type: string, format: uuid}}
+                        experience_years: {type: integer}
+                        languages: {type: array, items: {type: string}}
+                        accepts_home_visits: {type: boolean}
+                        home_visit_radius_km: {type: integer}
+                        home_base: {type: [object, "null"], properties: {lat: {type: number}, lng: {type: number}}}
+                        photo_file_id: {type: [string, "null"], format: uuid}
+                        rating: {type: [number, "null"]}
+                        reviews_count: {type: integer}
+                        affiliations:
+                          type: array
+                          items:
+                            type: object
+                            required: [affiliation_id, clinic_id, status]
+                            properties:
+                              affiliation_id: {type: string, format: uuid}
+                              clinic_id: {type: string, format: uuid}
+                              status: {type: string, enum: [active, paused]}
+                        services: {type: array, items: {$ref: "#/components/schemas/ExportService"}}
+  /internal/v1/export/clinics:
+    get:
+      summary: "`active` va `suspended` klinikalar — klinikaning o'z faol xizmatlari bilan"
+      parameters:
+        - {name: after, in: query, schema: {type: string, format: uuid}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_after]
+                properties:
+                  next_after: {type: [string, "null"], format: uuid}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [clinic_id, name, city, street, latitude, longitude, status, working_hours, rating,
+                                 reviews_count, services]
+                      properties:
+                        clinic_id: {type: string, format: uuid}
+                        name: {type: string}
+                        city: {type: string}
+                        street: {type: string}
+                        latitude: {type: number}
+                        longitude: {type: number}
+                        status: {type: string, enum: [active, suspended]}
+                        working_hours: {type: [object, array]}
+                        rating: {type: [number, "null"]}
+                        reviews_count: {type: integer}
+                        services: {type: array, items: {$ref: "#/components/schemas/ExportService"}}
+  /internal/v1/export/specializations:
+    get:
+      summary: Mutaxassisliklar lug'ati (kichik — sahifalashsiz)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, name_ru, slug]
+                      properties:
+                        id: {type: string, format: uuid}
+                        name: {type: string}
+                        name_ru: {type: string}
+                        slug: {type: string}

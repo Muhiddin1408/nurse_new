@@ -20,8 +20,10 @@ from app.services import platform
 ALLOWED_CALLERS: tuple[str, ...] = (
     "billing-service",
     "booking-service",
+    "dispute-service",
     "payment-service",
     "pricing-service",
+    "review-service",
     "schedule-service",
 )
 

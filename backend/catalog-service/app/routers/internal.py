@@ -5,18 +5,29 @@ Ruxsat etilgan chaqiruvchilar — docs/SERVICE_REGISTRY.md dagi ro'yxat bilan bi
 
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from medbron_common.errors import Forbidden
 
 from app.core.security import verify_internal_token
 from app.repositories import catalog as repo
+from app.repositories import export as export_repo
 from app.routers.deps import Session
 from app.schemas.catalog import (
     AccessOut,
     Bookability,
+    ExportAffiliation,
+    ExportClinic,
+    ExportClinics,
+    ExportDoctor,
+    ExportDoctors,
+    ExportService,
+    ExportSpecialization,
+    ExportSpecializations,
     InternalClinic,
     InternalRoom,
     InternalService,
@@ -34,7 +45,9 @@ ALLOWED_CALLERS: tuple[str, ...] = (
     "booking-service",
     "pricing-service",
     "schedule-service",
+    "search-service",
 )
+EXPORT_MAX_LIMIT = 500
 
 
 async def _deny_all() -> None:
@@ -147,3 +160,79 @@ async def room(room_id: UUID, session: Session) -> InternalRoom:
     if row is None:
         raise RoomNotFound()
     return InternalRoom.model_validate(row)
+
+
+# --- search-service reindex (2026-10-21 qarori): keyset sahifalash, faqat ommaviy maydonlar -----------------
+
+ExportLimit = Annotated[int, Query(ge=1, le=EXPORT_MAX_LIMIT)]
+
+
+def _float(value: Decimal | None) -> float | None:
+    return float(value) if value is not None else None
+
+
+@router.get("/export/doctors", response_model=ExportDoctors)
+async def export_doctors(session: Session, after: UUID | None = None, limit: ExportLimit = 200) -> ExportDoctors:
+    """`approved` va `suspended` shifokorlar (qidiruvda bo'lgan yoki bo'lishi mumkin bo'lganlar)."""
+    rows = await export_repo.doctors_page(session, after, limit)
+    ids = [d.id for d in rows]
+    specs = await export_repo.specialization_ids_for(session, ids)
+    affiliations = await export_repo.affiliations_for(session, ids)
+    services = await export_repo.services_for(session, doctor_ids=ids)
+    items = [
+        ExportDoctor(
+            doctor_id=d.id,
+            user_id=d.user_id,
+            full_name=d.full_name,
+            status=d.status,
+            specialization_ids=sorted(specs.get(d.id, []), key=str),
+            experience_years=d.experience_years,
+            languages=list(d.languages or []),
+            accepts_home_visits=d.accepts_home_visits,
+            home_visit_radius_km=d.home_visit_radius_km,
+            home_base=(
+                Point(lat=float(d.home_base_latitude), lng=float(d.home_base_longitude))
+                if d.home_base_latitude is not None and d.home_base_longitude is not None
+                else None
+            ),
+            photo_file_id=d.photo_file_id,
+            rating=_float(d.rating),
+            reviews_count=d.reviews_count,
+            affiliations=[
+                ExportAffiliation(affiliation_id=a.id, clinic_id=a.clinic_id, status=a.status)
+                for a in affiliations.get(d.id, [])
+            ],
+            services=[ExportService.model_validate(s) for s in services.get(d.id, [])],
+        )
+        for d in rows
+    ]
+    return ExportDoctors(items=items, next_after=rows[-1].id if len(rows) == limit else None)
+
+
+@router.get("/export/clinics", response_model=ExportClinics)
+async def export_clinics(session: Session, after: UUID | None = None, limit: ExportLimit = 200) -> ExportClinics:
+    rows = await export_repo.clinics_page(session, after, limit)
+    services = await export_repo.services_for(session, clinic_ids=[c.id for c in rows])
+    items = [
+        ExportClinic(
+            clinic_id=c.id,
+            name=c.name,
+            city=c.city,
+            street=c.street,
+            latitude=float(c.latitude),
+            longitude=float(c.longitude),
+            status=c.status,
+            working_hours=c.working_hours or {},
+            rating=_float(c.rating),
+            reviews_count=c.reviews_count,
+            services=[ExportService.model_validate(s) for s in services.get(c.id, [])],
+        )
+        for c in rows
+    ]
+    return ExportClinics(items=items, next_after=rows[-1].id if len(rows) == limit else None)
+
+
+@router.get("/export/specializations", response_model=ExportSpecializations)
+async def export_specializations(session: Session) -> ExportSpecializations:
+    rows = await export_repo.specializations(session)
+    return ExportSpecializations(items=[ExportSpecialization.model_validate(s) for s in rows])

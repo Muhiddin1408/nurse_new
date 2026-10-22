@@ -460,3 +460,81 @@ class InternalRoom(BaseModel):
     clinic_id: UUID
     name: str
     is_active: bool
+
+
+# --- search-service reindex eksporti (/internal/v1/export/*) ---------------------------------------------
+
+
+class ExportService(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    doctor_id: UUID | None
+    clinic_id: UUID | None
+    specialization_id: UUID
+    name: str
+    name_ru: str
+    place: str
+    duration_minutes: int
+    price_tiyin: int
+
+
+class ExportAffiliation(BaseModel):
+    affiliation_id: UUID
+    clinic_id: UUID
+    status: str
+
+
+class ExportDoctor(BaseModel):
+    doctor_id: UUID
+    user_id: UUID
+    full_name: str
+    status: str
+    specialization_ids: list[UUID]
+    experience_years: int
+    languages: list[str]
+    accepts_home_visits: bool
+    home_visit_radius_km: int
+    home_base: Point | None
+    photo_file_id: UUID | None
+    rating: float | None
+    reviews_count: int
+    affiliations: list[ExportAffiliation]
+    services: list[ExportService]
+
+
+class ExportClinic(BaseModel):
+    clinic_id: UUID
+    name: str
+    city: str
+    street: str
+    latitude: float
+    longitude: float
+    status: str
+    working_hours: dict[str, Any] | list[Any]
+    rating: float | None
+    reviews_count: int
+    services: list[ExportService]
+
+
+class ExportDoctors(BaseModel):
+    items: list[ExportDoctor]
+    next_after: UUID | None = Field(description="Keyingi sahifa uchun `after`; None — oxirgi sahifa")
+
+
+class ExportClinics(BaseModel):
+    items: list[ExportClinic]
+    next_after: UUID | None
+
+
+class ExportSpecialization(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    name_ru: str
+    slug: str
+
+
+class ExportSpecializations(BaseModel):
+    items: list[ExportSpecialization]

@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p8
+*.jks
+*.keystore
+/bin/
+coverage.out

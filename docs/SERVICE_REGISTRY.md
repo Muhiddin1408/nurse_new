@@ -28,9 +28,9 @@
 | 09 | booking-service | Py | 8080 | 8109 | 5409 | 6309 | `booking.created`, `booking.confirmed`, `booking.cancelled`, `booking.expired`, `booking.rescheduled`, `booking.started`, `booking.completed`, `booking.no_show`, `booking.confirmation_failed`, `waitlist.slot_offered` | `user.deletion_requested`, `admin.settings_changed`, `doctor.suspended`, `clinic.suspended`, `affiliation.ended`, `slot.released`, `payment.captured`, `payment.reversed`, `refund.succeeded` | catalog, schedule, pricing, user, admin |
 | 10 | payment-service | Py | 8080 | 8110 | 5410 | 6310 | `payment.created`, `payment.captured`, `payment.failed`, `payment.reversed`, `refund.succeeded`, `refund.failed`, `payment.discrepancy_found` | `admin.settings_changed`, `booking.cancelled`, `booking.no_show`, `booking.confirmation_failed`, `payout.paid`, `dispute.resolved` | booking, admin |
 | 11 | billing-service | Py | 8080 | 8111 | 5411 | 6311 | `payout.calculated`, `payout.paid` | `admin.settings_changed`, `booking.cancelled`, `booking.completed`, `booking.no_show`, `payment.reversed`, `refund.succeeded` | catalog, admin |
-| 12 | review-service | Py | 8080 | 8112 | 5412 | 6312 | `review.submitted`, `review.published`, `review.rejected`, `rating.recalculated` | `admin.settings_changed`, `booking.completed` | booking |
-| 13 | dispute-service | Py | 8080 | 8113 | 5413 | 6313 | `dispute.opened`, `dispute.resolved`, `dispute.sla_breached` | `admin.settings_changed`, `refund.succeeded` | booking, file |
-| 14 | search-service | Py | 8080 | 8114 | 5414 | 6314 | — | `doctor.approved`, `doctor.suspended`, `doctor.reinstated`, `doctor.profile_updated`, `clinic.published`, `clinic.updated`, `clinic.suspended`, `affiliation.accepted`, `affiliation.paused`, `affiliation.resumed`, `affiliation.ended`, `service.created`, `service.updated`, `service.deactivated`, `schedule.availability_changed`, `rating.recalculated` | — |
+| 12 | review-service | Py | 8080 | 8112 | 5412 | 6312 | `review.submitted`, `review.published`, `review.rejected`, `rating.recalculated` | `admin.settings_changed`, `booking.completed` | booking, admin |
+| 13 | dispute-service | Py | 8080 | 8113 | 5413 | 6313 | `dispute.opened`, `dispute.resolved`, `dispute.sla_breached` | `admin.settings_changed`, `refund.succeeded` | booking, file, admin |
+| 14 | search-service | Py | 8080 | 8114 | 5414 | 6314 | — | `doctor.approved`, `doctor.suspended`, `doctor.reinstated`, `doctor.profile_updated`, `clinic.published`, `clinic.updated`, `clinic.suspended`, `affiliation.accepted`, `affiliation.paused`, `affiliation.resumed`, `affiliation.ended`, `service.created`, `service.updated`, `service.deactivated`, `schedule.availability_changed`, `rating.recalculated` | catalog |
 | 15 | analytics-service | Py | 8080 | 8115 | 5415 | — | — | `#` — `audit.recorded` dan boshqa barcha 55 ta event (navbat `#` ga bind, audit filtrlanadi) | — |
 | 16 | ws-gateway | **Go** | 8080 | 8116 | — | 6316 | — | `user.deactivated`, `schedule.availability_changed`, `booking.*` (9 ta), `waitlist.slot_offered`, `payment.captured`, `payment.failed` | booking |
 
@@ -48,8 +48,8 @@
 | Prometheus | `medbron-prometheus` | 9090 | 9090 | |
 | Grafana | `medbron-grafana` | 3000 | 3000 | |
 | S3 obyekt ombori (SeaweedFS, ADR-0010) | `medbron-s3` | 8333 | 9000 | Bucketlar: `public-media` (anonim o'qish), `private-documents` (faqat presigned). Servislar faqat S3 API bilan |
-| Elasticsearch | `medbron-elasticsearch` | 9200 | 9200 | Faqat search-service |
-| ClickHouse | `medbron-clickhouse` | 8123 / 9000 | 8123 / 9009 | Faqat analytics-service (host 9000 S3'da band) |
+| Elasticsearch 8 | `search-service-elasticsearch` | 9200 | 9200 | search-service compose'ida (ichki tarmoq; database-per-service) |
+| ClickHouse | `analytics-service-clickhouse` | 8123 / 9000 | 8123 / 9009 | analytics-service compose'ida (ichki tarmoq; host 9000 S3'da band) |
 | Docker network | `medbron-net` | — | — | `external: true`, `backend/infra` yaratadi |
 
 ## 4. Servislar bo'yicha tafsilot
@@ -80,7 +80,7 @@ Routerlar: `/v1/<x>` — user JWT, `/v1/admin/<x>` — admin JWT + permission, `
 - **Tashqi API:** `POST /v1/admin/auth/login` (parol → `mfa_token`), `POST /v1/admin/auth/totp` (→ admin JWT `aud=admin`), `GET /v1/admin/auth/me`, `POST /v1/admin/auth/password`, `/v1/admin/admins[/{id}[/reset-totp]]`, `/v1/admin/roles[/{id}]`, `GET /v1/admin/permissions` (`admins.manage`), `GET /v1/admin/audit` (`audit.read`), `GET|PUT /v1/admin/settings` (`settings.manage`, `expected_version`).
 - **Internal API:** `GET /internal/v1/settings` (`ETag "v<N>"`, `If-None-Match` → 304; chaqiruvchilar 60s keshlaydi, `admin.settings_changed` da tashlaydi).
 - **Navbat:** `admin-service.audit` (faqat `audit.recorded`).
-- **Ruxsat etilgan chaqiruvchilar:** schedule, pricing, booking, payment, billing.
+- **Ruxsat etilgan chaqiruvchilar:** schedule, pricing, booking, payment, billing, review, dispute.
 
 ### 04 file-service
 - **Egalik:** fayl metadata, S3 obyektlari (ADR-0010), presigned URL, thumbnail, haqiqiy tur tekshiruvi (magic bytes), EXIF/GPS tozalash, hajm limiti.
@@ -101,10 +101,10 @@ Routerlar: `/v1/<x>` — user JWT, `/v1/admin/<x>` — admin JWT + permission, `
 - **Egalik:** klinikalar, xonalar, mutaxassisliklar, shifokor profili + onboarding + moderatsiya holat mashinasi, shifokor hujjatlari (fayl ID'lari), klinika a'zolari (clinic_admin), shifokor–klinika aloqalari (affiliation), xizmatlar va ularning narxi, denormalizatsiya qilingan reyting.
 - **Tashqi API:** `GET /v1/catalog/specializations|clinics[/{id}]|doctors[/{id}[/services]]` (tokensiz; faqat tasdiqlangan shifokor / faol klinika), `/v1/doctor/onboarding/*` (start, profile, documents, submit, status), `/v1/doctor/profile`, `/v1/doctor/license`, `/v1/doctor/services[/{id}[/price-history]]`, `/v1/doctor/clinic-invites[/{id}/accept|decline]`, `/v1/doctor/affiliations[/{id}/leave]`, `/v1/clinic/mine`, `/v1/clinic/{id}/profile|rooms|doctors|services` (taklif — `doctors/invite`, `doctors/{aff}/pause|resume|end`).
 - **Admin API:** `/v1/admin/moderation/doctors` (`doctors.moderate`; hujjat havolasi ≤ 5 daq), `/v1/admin/clinics[/{id}[/publish|suspend|reinstate|members]]` (`clinics.manage`), `/v1/admin/specializations` (`clinics.manage`).
-- **Internal API:** `GET /internal/v1/doctors/{id}/bookability` (status, uy chaqiruvi radiusi, baza koordinatalari, `clinic_payment_mode`, `follow_up_discount_percent`), `GET /internal/v1/services?ids=` (narx, joy, davomiylik, egasi, MXIK), `GET /internal/v1/access?user_id=&doctor_id=|clinic_id=` (resurs authz: shu user shu shifokor/klinikani boshqaradimi), `GET /internal/v1/clinics/{id}`, `GET /internal/v1/rooms/{id}`.
+- **Internal API:** `GET /internal/v1/doctors/{id}/bookability` (status, uy chaqiruvi radiusi, baza koordinatalari, `clinic_payment_mode`, `follow_up_discount_percent`), `GET /internal/v1/services?ids=` (narx, joy, davomiylik, egasi, MXIK), `GET /internal/v1/access?user_id=&doctor_id=|clinic_id=` (resurs authz: shu user shu shifokor/klinikani boshqaradimi), `GET /internal/v1/clinics/{id}`, `GET /internal/v1/rooms/{id}`, `GET /internal/v1/export/doctors|clinics?after=&limit=` (search reindex — keyset sahifalash, faqat ommaviy ko'rinadigan maydonlar).
 - **Tizim aktyori:** cron o'zgarishlarida `*_by` = `00000000-0000-0000-0000-000000000000`.
 - **Calls:** file.
-- **Ruxsat etilgan chaqiruvchilar:** schedule, pricing, booking, billing.
+- **Ruxsat etilgan chaqiruvchilar:** schedule, pricing, booking, billing, search.
 - **Cron:** litsenziya muddati eslatmasi (kunlik).
 
 ### 07 schedule-service (Go)
@@ -152,21 +152,23 @@ Routerlar: `/v1/<x>` — user JWT, `/v1/admin/<x>` — admin JWT + permission, `
 - **Egalik:** sharhlar, avtomatik moderatsiya bayroqlari (telefon, havola, so'kinish), shifokor javobi, reyting hisoblash (minimal 5 ta sharhdan).
 - **Tashqi API:** `POST /v1/reviews` (yakunlangan bron, 30 kun ichida), `GET /v1/reviews?doctor_id=`, `POST /v1/doctor/reviews/{id}/reply`.
 - **Admin API:** `/v1/admin/reviews` (`reviews.moderate`).
-- **Calls:** booking (`/review-eligibility` — `booking.completed` proyeksiyasi bo'lmasa fallback).
+- **Calls:** booking (`/review-eligibility` — `booking.completed` proyeksiyasi bo'lmasa fallback), admin (sozlamalar: `sla.review_window_days`).
 - **Lokal proyeksiya:** `booking.completed` dan "sharh qoldirish mumkin bo'lgan bronlar".
 
 ### 13 dispute-service
 - **Egalik:** nizolar, dalillar (fayl ID), SLA, yechim.
 - **Tashqi API:** `POST /v1/disputes`, `GET /v1/disputes/mine`, `POST /v1/disputes/{id}/evidence`.
 - **Admin API:** `/v1/admin/disputes` (`disputes.resolve`).
-- **Calls:** booking (`/summary`), file (dalil biriktirish).
+- **Calls:** booking (`/summary`), file (dalil biriktirish), admin (sozlamalar: `sla.dispute_hours`).
 - **Cron:** SLA buzilishini tekshirish (har 15 daqiqa).
 
 ### 14 search-service
 - **Egalik:** CQRS o'qish modeli — Elasticsearch indekslari (`doctors_v1`, `clinics_v1`), alias orqali qayta indekslash.
 - **Tashqi API:** `GET /v1/search/doctors?q=&specialization=&city=&place=&lat=&lng=&radius_km=&available_on=&sort=`, `GET /v1/search/clinics`, `GET /v1/search/suggest`.
-- **Admin API:** `POST /v1/admin/search/reindex` (`search.manage`) — barcha ma'lumotni catalog'dan emas, **event replay** orqali (`analytics` yoki catalog `GET /internal/v1/export` — 3-bosqichda qaror).
-- **Postgres:** faqat `processed_events` va proyeksiya versiyalari.
+- **Admin API:** `POST /v1/admin/search/reindex` (`search.manage`) — yangi versiyali indeks (`doctors_v<N>`) catalog `GET /internal/v1/export/*` dan quriladi, keyin alias almashtiriladi (2026-10-21 qarori). Oddiy rejimda — faqat eventlar.
+- **Calls:** catalog (faqat reindex paytida).
+- **Dvigatel:** Elasticsearch 8 (monolit bilan bir xil, 2026-10-21 qarori) — servisning o'z compose'ida, ichki tarmoqda.
+- **Postgres:** faqat `processed_events`, eventlar tartibi (`source_version`) va reindex holati.
 
 ### 15 analytics-service
 - **Egalik:** ClickHouse'dagi barcha eventlar (`events_raw`), agregatlar (kunlik bronlar, konversiya, cancellation rate, GMV), hisobotlar.
@@ -208,17 +210,18 @@ ularni katalogdagi `consumers` bilan solishtiradi.
 ```
 booking  → catalog, schedule, pricing, user, admin      (5)
 payment  → booking, admin                               (2)
-review   → booking                                      (1)
-dispute  → booking, file                                (2)
+review   → booking, admin                               (2)
+dispute  → booking, file, admin                         (3)
 ws-gw    → booking                                      (1)
 schedule → catalog, admin                               (2)
 pricing  → catalog, admin                               (2)
 billing  → catalog, admin                               (2)
+search   → catalog (faqat reindex)                      (1)
 catalog  → file                                         (1)
 user     → file                                         (1)
-auth, admin, file, notification, search, analytics → —  (leaf)
+auth, admin, file, notification, analytics → —         (leaf)
 ```
 
-Topologik tartib (pastdan yuqoriga): `file, admin, auth, notification, search, analytics` →
-`catalog, user` → `schedule, pricing, billing` → `booking` → `payment, review, dispute, ws-gateway`.
+Topologik tartib (pastdan yuqoriga): `file, admin, auth, notification, analytics` →
+`catalog, user` → `schedule, pricing, billing, search` → `booking` → `payment, review, dispute, ws-gateway`.
 Sikl yo'q, maksimal chiqish darajasi 5 (limit 6). CI: `scripts/check-contracts.py --graph`.

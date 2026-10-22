@@ -1,5 +1,5 @@
 # Kong (DB-less, deklarativ) — DEV. ARCHITECTURE.md 12: strangler-fig.
-# /api/* — monolit (frontend /v1/* ga bosqichma-bosqich o'tadi). /v1/* — yangi servislar (2: identity, 3: asosiy domen, 4: pul).
+# /api/* — monolit (frontend /v1/* ga bosqichma-bosqich o'tadi). /v1/* — yangi servislar (2: identity, 3: asosiy domen, 4: pul, 5: real-time va qo'shimchalar).
 # /internal/* tashqariga HECH QACHON ochilmaydi. Servislar `medbron-net` da: http://<servis>:8080.
 # Har servis X-Real-IP (Kong o'zi qo'yadi) bo'yicha mijoz IP'sini oladi.
 _format_version: "3.0"
@@ -237,6 +237,75 @@ services:
         strip_path: false
       - name: billing-clinic
         paths: ['~/v1/clinic/[^/]+/earnings(/|$)']
+        strip_path: false
+        regex_priority: 10
+
+  # --- 5-bosqich: real-time va qo'shimchalar ---------------------------------------------
+  - name: review-service
+    url: http://review-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: review-submit
+        paths: ['~/v1/reviews$']
+        methods: [POST]
+        strip_path: false
+        regex_priority: 10
+        plugins:
+          - name: rate-limiting
+            config: {minute: 10, hour: 50, policy: local, limit_by: ip, fault_tolerant: true}
+      - name: review-api
+        paths: ["/v1/reviews", "/v1/doctor/reviews", "/v1/admin/reviews"]
+        strip_path: false
+
+  - name: dispute-service
+    url: http://dispute-service:8080
+    connect_timeout: 2000
+    read_timeout: 15000
+    write_timeout: 15000
+    retries: 0
+    routes:
+      - name: dispute-api
+        paths: ["/v1/disputes", "/v1/admin/disputes"]
+        strip_path: false
+
+  - name: search-service
+    url: http://search-service:8080
+    connect_timeout: 2000
+    read_timeout: 10000
+    write_timeout: 10000
+    retries: 1            # faqat o'qish (GET) — takrorlash xavfsiz
+    routes:
+      - name: search-api
+        paths: ["/v1/search/", "/v1/admin/search/"]
+        strip_path: false
+        plugins:
+          - name: rate-limiting
+            config: {second: 20, minute: 600, policy: local, limit_by: ip, fault_tolerant: true}
+
+  - name: analytics-service
+    url: http://analytics-service:8080
+    connect_timeout: 2000
+    read_timeout: 30000   # hisobot so'rovlari (ClickHouse)
+    write_timeout: 30000
+    retries: 0
+    routes:
+      - name: analytics-admin
+        paths: ["/v1/admin/analytics"]
+        strip_path: false
+
+  - name: ws-gateway
+    url: http://ws-gateway:8080
+    connect_timeout: 2000
+    read_timeout: 120000  # server ping har ~54 s — bo'sh ulanish uzilmasin
+    write_timeout: 120000
+    retries: 0
+    routes:
+      - name: ws
+        paths: ['~/ws$']
+        protocols: [http, https]
         strip_path: false
         regex_priority: 10
 

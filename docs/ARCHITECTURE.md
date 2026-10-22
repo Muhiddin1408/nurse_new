@@ -158,7 +158,9 @@ flowchart TD
     PAY[payment] --> BKG
     PAY --> ADM
     REV[review] --> BKG
+    REV --> ADM
     DSP[dispute] --> BKG
+    DSP --> ADM
     DSP --> FILE[file]
     WS[ws-gateway] --> BKG
     SCH --> CAT
@@ -167,6 +169,7 @@ flowchart TD
     PRC --> ADM
     BIL[billing] --> CAT
     BIL --> ADM
+    SRC[search] -. reindex .-> CAT
     CAT --> FILE
     USR --> FILE
 ```
@@ -656,6 +659,7 @@ yozadigan ko'prik (`bridge`) ishlatiladi, toki monolit to'liq o'chirilmaguncha.
 | [0009](adr/0009-ci-github-actions-compose-deploy.md) | CI — GitHub Actions, deploy — Docker Compose, registry — GHCR |
 | [0010](adr/0010-object-storage-s3-api-seaweedfs.md) | Obyekt ombori — S3 API, dev/self-hosted'da SeaweedFS (MinIO image'lari tarqatilmaydi) |
 | [0011](adr/0011-core-domain-boundaries.md) | Asosiy domen chegaralari: egalik, bron sagasi tartibi, kompensatsiyalar, monolit xatolari tuzatishlari |
+| [0013](adr/0013-realtime-and-extras.md) | Real-time va qo'shimchalar: review, dispute, search (ES 8, catalog export reindex), analytics (ClickHouse), ws-gateway |
 | [0012](adr/0012-money-payment-billing.md) | Pul: to'lov sagasi, yagona taqsimot formulasi (`share_of`), refund ulushi, payout daftari, provayder OFD'si |
 
 ---
@@ -670,6 +674,9 @@ yozadigan ko'prik (`bridge`) ishlatiladi, toki monolit to'liq o'chirilmaguncha.
 | 4 | CI: GitHub Actions yoki GitLab? | Standart: GitHub Actions (ADR-0009) |
 | 5 | Frontend yangi API'ga qachon? | Standart: 3-bosqichdan, Kong'da vaqtinchalik rewrite bilan |
 | 6 | Zaklad (deposit) bronda klinikada olingan qoldiqdan platforma komissiyasi qanday undiriladi? | Ochiq (ADR-0012 §5): hozir undirilmaydi — billing faqat onlayn to'langan summadan hisoblaydi |
+| 7 | Sharh muallifi ismi manbai; akkaunt o'chirilganda sharhlar anonimlashtirilsinmi? | Ochiq (ADR-0013) — hozir ismni ilova yuboradi |
+| 8 | Nizo ochish muddati; refund kelmagan nizoni admin yopishi | Ochiq (ADR-0013) |
+| 9 | ws ulanish limiti global (Redis) bo'lsinmi; analytics Postgres kerakmi | Ochiq (ADR-0013) |
 
 ---
 
@@ -682,5 +689,5 @@ yozadigan ko'prik (`bridge`) ishlatiladi, toki monolit to'liq o'chirilmaguncha.
 | 2 — Identity | ✅ | auth, admin, user, file, notification; Kong `/v1/*`, monolit RS256 ko'prigi, `scripts/migrate/identity.py`, e2e (`tests/e2e`), ADR-0010, cutover runbook |
 | 3 — Asosiy domen | ✅ | catalog, schedule (Go), pricing, booking; ADR-0011; Kong marshrutlari; `scripts/migrate/core.py`, core-cutover runbook; e2e — to'liq bron oqimi (`scripts/e2e.sh`) |
 | 4 — Pul | ✅ | payment (Payme JSON-RPC, Click SHOP API, ledger, refund, reconciliation, provayder OFD), billing (daromad daftari, haftalik payout); ADR-0012; Kong marshrutlari; `scripts/migrate/money.py`, money-cutover runbook; e2e — Payme/Click, saga kompensatsiyasi, payout sikli |
-| 5 — Real-time va qo'shimchalar | — | ws-gateway, review, dispute, search, analytics |
+| 5 — Real-time va qo'shimchalar | ✅ | ws-gateway (Go), review, dispute, search (ES 8), analytics (ClickHouse); catalog export; ADR-0013; Kong; `scripts/migrate/feedback.py`, realtime-cutover runbook; e2e — WebSocket, sharh, nizo, analitika, qidiruv |
 | 6 — Gateway va prod | — | kong.prod.yml, k6, alertlar, runbook'lar |

@@ -1,0 +1,79 @@
+# ws-gateway (Go) — WebSocket server + event consumer. Postgres YO'Q (ma'lumot saqlamaydi); Redis — pub/sub
+# (nusxalararo tarqatish), event idempotentligi va booking authz keshi (faqat ichki tarmoqda!).
+# Avval: backend/infra ko'tarilgan (medbron-net, RabbitMQ) va scripts/gen-jwt-keys.sh.
+#
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d --build
+#
+# Gorizontal masshtab: `ws-gateway` ni ko'paytirish mumkin (har nusxa `rtws:*` ga obuna); consumer bitta
+# yetarli (ko'p nusxa ham xavfsiz — Redis dedup).
+name: ws-gateway
+
+networks:
+  internal: {}
+  medbron-net:
+    external: true
+
+volumes:
+  redis-data:
+
+x-app: &app
+  image: ${IMAGE_REPO:-medbron/ws-gateway}:${IMAGE_TAG:?IMAGE_TAG (commit SHA) majburiy}
+  build:
+    context: ../..
+    dockerfile: backend/ws-gateway/Dockerfile
+  init: true
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    REDIS_URL: redis://:${REDIS_PASSWORD:?}@ws-gateway-redis:6379/0
+    RABBITMQ_URL: amqp://${RABBITMQ_USER:?}:${RABBITMQ_PASSWORD:?}@medbron-rabbitmq:5672/
+  volumes:
+    # Faqat PUBLIC kalitlar (read-only)
+    - ${SECRETS_DIR:-../../secrets}/public:/secrets:ro
+  networks: [internal, medbron-net]
+  depends_on:
+    ws-gateway-redis:
+      condition: service_healthy
+
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD", "/usr/local/bin/healthcheck", "http://127.0.0.1:9100/"]
+  interval: 15s
+  timeout: 3s
+  retries: 3
+  start_period: 10s
+
+services:
+  ws-gateway-redis:
+    image: redis:7.4-alpine
+    container_name: ws-gateway-redis
+    restart: unless-stopped
+    # Pub/sub va qisqa kesh — persistentlik shart emas (lekin parol majburiy)
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD .env da majburiy}", "--appendonly", "no"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:?}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks: [internal]
+
+  ws-gateway:
+    <<: *app
+    container_name: ws-gateway
+    # SIGTERM → klientlarga 1001 (qayta ulaning), keyin to'xtaydi
+    stop_grace_period: 20s
+    ports:
+      - "${HOST_PORT:?}:8080"
+
+  ws-gateway-event-consumer:
+    <<: *app
+    container_name: ws-gateway-event-consumer
+    command: ["/usr/local/bin/ws-gateway-consumer"]
+    healthcheck: *worker-healthcheck

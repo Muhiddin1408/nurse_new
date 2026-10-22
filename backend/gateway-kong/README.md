@@ -17,6 +17,11 @@ undan oldin eski kirish yo'llarini auth-service'ga yo'naltirish — `docs/runboo
 | `~/v1/payments/(payme/webhook\|click/(prepare\|complete))$` | payment-service | Provayder webhooklari: rate-limit YO'Q, tana ≤ 64 KB, himoya — imzo + IP allowlist |
 | `/v1/payments`, `/v1/admin/{payments,refunds,ledger,reconciliation}` | payment-service | Checkout POST 30/daq |
 | `/v1/doctor/{earnings,payouts,payout-account}`, `~/v1/clinic/{id}/earnings`, `/v1/admin/payouts` | billing-service | |
+| `/v1/reviews`, `/v1/doctor/reviews`, `/v1/admin/reviews` | review-service | Sharh yuborish 10/daq |
+| `/v1/disputes`, `/v1/admin/disputes` | dispute-service | |
+| `/v1/search/`, `/v1/admin/search/` | search-service | 20/s; GET retry 1 |
+| `/v1/admin/analytics` | analytics-service | |
+| `~/ws$` | ws-gateway | WebSocket (Upgrade o'tadi), read/write timeout 120 s; token query'da — access log formatida query yozilmasin (prod) |
 | `/api/*`, `/admin/`, `/static/` | monolit | OTP 5/daq, qolgan API 50/s; eski `/api/v1/payment/(payme\|click)/` — cutover'gacha |
 | `/internal/*` | — | har doim 404 (request-termination), hatto xato bilan servis route'i qo'shilsa ham |
 
