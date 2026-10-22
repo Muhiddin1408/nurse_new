@@ -7,9 +7,11 @@ import {
   RotateCcw, Star, TimerReset, UserRound, Wallet, XCircle,
 } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { dateLong, money, relativeDateTime, time, todayISO, weekday, dayKey } from '@/lib/format'
 import { useToast } from '@/lib/toast'
-import type { Booking, CancellationPreview, CheckoutResponse } from '@/lib/types'
+import type { Booking, CancellationPreview, CheckoutResponse, Dispute, RebookOut } from '@/lib/types'
+import { useBookingView } from './shared'
 import { SlotPicker, type PlacedSlot } from '@/components/SlotPicker'
 import { Avatar, Badge, Button, ErrorState, Modal, Money, Select, Skeleton, Stars, StatusBadge, Textarea, Toggle, cx } from '@/components/ui'
 
@@ -34,12 +36,13 @@ export default function BookingDetail() {
 
   const q = useQuery({
     queryKey: ['booking', id],
-    queryFn: () => api<Booking>(`/booking/bookings/${id}`),
+    queryFn: () => api<Booking>(`/bookings/${id}`),
     // To'lov natijasi webhook orqali keladi — haqiqat manbai shu endpoint (3s polling)
     refetchInterval: (query) => (polling && query.state.data?.status === 'pending_payment' ? 3000 : false),
   })
 
   const b = q.data
+  const v = useBookingView(b)
   useEffect(() => {
     if (b && b.status !== 'pending_payment') setPolling(false)
   }, [b])
@@ -64,17 +67,17 @@ export default function BookingDetail() {
         <ArrowLeft className="h-4 w-4" /> Bronlarim
       </Link>
 
-      {isNew && b.status === 'confirmed' && <SuccessHero b={b} />}
+      {isNew && b.status === 'confirmed' && <SuccessHero b={b} v={v} />}
 
       <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-6">
           <div className="card overflow-hidden">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-ink-100 p-5 sm:p-6">
               <div className="flex items-center gap-4">
-                <Avatar name={(b.doctor_name ?? '').replace(/^Dr\.?\s*/, '')} size={56} />
+                <Avatar name={v.doctorName.replace(/^Dr\.?\s*/, '')} size={56} />
                 <div>
                   <Link to={`/doctors/${b.doctor_id}`} className="text-lg font-bold text-ink-900 hover:text-brand-700">
-                    {b.doctor_name}
+                    {v.doctorName || 'Shifokor'}
                   </Link>
                   <div className="text-sm text-ink-500">Bron № {b.number}</div>
                 </div>
@@ -86,11 +89,11 @@ export default function BookingDetail() {
               <Info
                 icon={b.place === 'home' ? <House className="h-5 w-5" /> : <Building2 className="h-5 w-5" />}
                 label={b.place === 'home' ? 'Uyga chaqiruv' : 'Klinika'}
-                value={b.place === 'home' ? b.address_text || 'Manzil' : b.clinic_name || '—'}
-                sub={b.place === 'home' ? undefined : b.clinic_address}
+                value={b.place === 'home' ? v.addressText || 'Manzil' : v.clinicName || '—'}
+                sub={b.place === 'home' ? undefined : v.clinicAddress}
               />
-              <Info icon={<UserRound className="h-5 w-5" />} label="Bemor" value={b.patient_name ?? '—'} />
-              <Info icon={<Wallet className="h-5 w-5" />} label="To'lov usuli" value={PAYMENT_MODE[b.payment_mode ?? ''] ?? '—'} sub={b.payment_mode === 'deposit' && b.prepay_amount ? `Oldindan: ${money(b.prepay_amount)}` : undefined} />
+              <Info icon={<UserRound className="h-5 w-5" />} label="Bemor" value={v.patientName || '—'} />
+              <Info icon={<Wallet className="h-5 w-5" />} label="To'lov usuli" value={PAYMENT_MODE[b.payment_mode ?? ''] ?? '—'} sub={b.payment_mode === 'deposit' && b.prepay_tiyin ? `Oldindan: ${money(b.prepay_tiyin)}` : undefined} />
             </div>
           </div>
 
@@ -104,28 +107,28 @@ export default function BookingDetail() {
                   <span className="text-ink-700">
                     {it.service_name} <span className="text-sm text-ink-400">· {it.duration_minutes} daq</span>
                   </span>
-                  <Money value={it.price} className="font-semibold text-ink-900" />
+                  <Money tiyin={it.price_tiyin} className="font-semibold text-ink-900" />
                 </div>
               ))}
-              {Number(b.discount_amount) > 0 && (
+              {b.discount_tiyin > 0 && (
                 <div className="flex justify-between text-[15px] font-semibold text-brand-700">
                   <span>
                     {DISCOUNT_LABEL[b.discount_kind] ?? 'Chegirma'}
                     {b.promo_code && ` (${b.promo_code})`}
                   </span>
-                  <span>−{money(b.discount_amount)}</span>
+                  <span>−{money(b.discount_tiyin)}</span>
                 </div>
               )}
               <div className="flex items-end justify-between border-t border-ink-100 pt-3">
                 <span className="font-semibold text-ink-700">Jami</span>
                 <span>
-                  {b.original_price && b.original_price !== b.total_price && <Money value={b.original_price} strike className="mr-2 text-sm" />}
-                  <Money value={b.total_price} className="text-2xl font-extrabold text-ink-950" />
+                  {b.original_tiyin !== b.total_tiyin && <Money tiyin={b.original_tiyin} strike className="mr-2 text-sm" />}
+                  <Money tiyin={b.total_tiyin} className="text-2xl font-extrabold text-ink-950" />
                 </span>
               </div>
               {b.status === 'confirmed' && b.payment_mode !== 'prepaid' && (
                 <div className="rounded-2xl bg-amber-50 p-3 text-sm text-amber-800">
-                  Qabulda to'lanadi: <b>{money(subtract(b.total_price, b.payment_mode === 'deposit' ? b.prepay_amount ?? '0' : '0'))}</b>
+                  Qabulda to'lanadi: <b>{money(b.total_tiyin - b.paid_tiyin)}</b>
                 </div>
               )}
             </div>
@@ -136,15 +139,6 @@ export default function BookingDetail() {
       </div>
     </div>
   )
-}
-
-function subtract(a: string, c: string) {
-  const toT = (v: string) => {
-    const [i, f = ''] = v.split('.')
-    return BigInt(i) * 100n + BigInt((f + '00').slice(0, 2))
-  }
-  const r = toT(a) - toT(c)
-  return `${r / 100n}.${String(r % 100n).padStart(2, '0')}`
 }
 
 function Info({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
@@ -160,7 +154,9 @@ function Info({ icon, label, value, sub }: { icon: React.ReactNode; label: strin
   )
 }
 
-function SuccessHero({ b }: { b: Booking }) {
+type View = ReturnType<typeof useBookingView>
+
+function SuccessHero({ b, v }: { b: Booking; v: View }) {
   return (
     <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="relative mb-6 overflow-hidden rounded-4xl bg-gradient-to-br from-brand-500 to-teal-700 p-6 text-white sm:p-8">
       <div className="absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10" />
@@ -171,10 +167,10 @@ function SuccessHero({ b }: { b: Booking }) {
         <div className="flex-1">
           <h2 className="text-2xl font-extrabold">Bron tasdiqlandi!</h2>
           <p className="mt-1 text-white/85">
-            {relativeDateTime(b.start_at)} — {b.doctor_name}. Eslatmani SMS orqali yuboramiz.
+            {relativeDateTime(b.start_at)} — {v.doctorName}. Eslatmani SMS orqali yuboramiz.
           </p>
         </div>
-        <Button variant="dark" onClick={() => downloadIcs(b)} icon={<CalendarPlus className="h-4 w-4" />}>
+        <Button variant="dark" onClick={() => downloadIcs(b, v)} icon={<CalendarPlus className="h-4 w-4" />}>
           Kalendarga qo'shish
         </Button>
       </div>
@@ -182,14 +178,14 @@ function SuccessHero({ b }: { b: Booking }) {
   )
 }
 
-function downloadIcs(b: Booking) {
+function downloadIcs(b: Booking, v: View) {
   if (!b.start_at || !b.end_at) return
   const f = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
-  const loc = b.place === 'home' ? b.address_text : `${b.clinic_name}, ${b.clinic_address}`
+  const loc = b.place === 'home' ? v.addressText : `${v.clinicName}, ${v.clinicAddress}`
   const ics = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Turon Clinic//UZ', 'BEGIN:VEVENT',
     `UID:${b.id}@turonclinic.uz`, `DTSTAMP:${f(new Date().toISOString())}`, `DTSTART:${f(b.start_at)}`, `DTEND:${f(b.end_at)}`,
-    `SUMMARY:Qabul: ${b.doctor_name}`, `LOCATION:${loc ?? ''}`, `DESCRIPTION:Bron № ${b.number}`,
+    `SUMMARY:Qabul: ${v.doctorName}`, `LOCATION:${loc ?? ''}`, `DESCRIPTION:Bron № ${b.number}`,
     'BEGIN:VALARM', 'TRIGGER:-PT2H', 'ACTION:DISPLAY', 'DESCRIPTION:Qabulga 2 soat qoldi', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR',
   ].join('\r\n')
   const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }))
@@ -220,7 +216,7 @@ function PaymentPanel({ b, onStartPolling, polling }: { b: Booking; onStartPolli
   const [checkout, setCheckout] = useState<CheckoutResponse | null>(null)
 
   const m = useMutation({
-    mutationFn: () => api<CheckoutResponse>(`/payment/bookings/${b.id}/checkout`, { method: 'POST', body: { provider } }),
+    mutationFn: () => api<CheckoutResponse>('/payments', { method: 'POST', body: { booking_id: b.id, provider } }),
     onSuccess: (c) => {
       setCheckout(c)
       onStartPolling()
@@ -243,7 +239,7 @@ function PaymentPanel({ b, onStartPolling, polling }: { b: Booking; onStartPolli
       </div>
       <div className="p-5 sm:p-6">
         <p className="text-[15px] text-ink-600">
-          Vaqtingiz vaqtincha band qilindi. To'lov qilinmasa, u avtomatik bo'shatiladi. To'lanadigan summa: <b className="text-ink-900">{money(b.prepay_amount ?? b.total_price)}</b>
+          Vaqtingiz vaqtincha band qilindi. To'lov qilinmasa, u avtomatik bo'shatiladi. To'lanadigan summa: <b className="text-ink-900">{money(b.prepay_tiyin || b.total_tiyin)}</b>
         </p>
         <div className="mt-5 grid grid-cols-2 gap-3">
           {(['payme', 'click'] as const).map((p) => (
@@ -275,6 +271,7 @@ function PaymentPanel({ b, onStartPolling, polling }: { b: Booking; onStartPolli
 }
 
 function Actions({ b }: { b: Booking }) {
+  const v = useBookingView(b)
   const nav = useNavigate()
   const qc = useQueryClient()
   const toast = useToast()
@@ -286,7 +283,7 @@ function Actions({ b }: { b: Booking }) {
   }
 
   const rebook = useMutation({
-    mutationFn: () => api<{ doctor_id: string; doctor_bookable: boolean; place: string }>(`/booking/bookings/${b.id}/rebook`),
+    mutationFn: () => api<RebookOut>(`/bookings/${b.id}/rebook`),
     onSuccess: (r) => {
       if (!r.doctor_bookable) return toast.error("Shifokor hozir bron qabul qilmayapti")
       nav(`/book/${r.doctor_id}?place=${r.place}`)
@@ -295,14 +292,14 @@ function Actions({ b }: { b: Booking }) {
   })
 
   const s = b.status
-  const mapsQuery = b.place === 'home' ? '' : encodeURIComponent(`${b.clinic_name ?? ''} ${b.clinic_address ?? ''}`)
+  const mapsQuery = b.place === 'home' ? '' : encodeURIComponent(`${v.clinicName} ${v.clinicAddress}`)
 
   return (
     <aside className="space-y-3 xl:sticky xl:top-24 xl:self-start">
       <div className="card space-y-2 p-4">
         <div className="px-1 pb-1 text-xs font-bold uppercase tracking-wider text-ink-400">Amallar</div>
         {s === 'confirmed' && b.start_at && (
-          <Button variant="outline" block onClick={() => downloadIcs(b)} icon={<CalendarPlus className="h-4 w-4" />}>
+          <Button variant="outline" block onClick={() => downloadIcs(b, v)} icon={<CalendarPlus className="h-4 w-4" />}>
             Kalendarga qo'shish
           </Button>
         )}
@@ -361,12 +358,12 @@ function CancelModal({ open, onClose, b, onDone }: { open: boolean; onClose: () 
   // Jarimani ko'rsatmasdan bekor qilish — support'ga shikoyat manbai: avval preview
   const preview = useQuery({
     queryKey: ['cancel-preview', b.id],
-    queryFn: () => api<CancellationPreview>(`/booking/bookings/${b.id}/cancellation-preview`),
+    queryFn: () => api<CancellationPreview>(`/bookings/${b.id}/cancellation-preview`),
     enabled: open,
     staleTime: 0,
   })
   const m = useMutation({
-    mutationFn: () => api<Booking>(`/booking/bookings/${b.id}/cancel`, { method: 'POST', body: { reason } }),
+    mutationFn: () => api<Booking>(`/bookings/${b.id}/cancel`, { method: 'POST', body: { reason } }),
     onSuccess: () => {
       toast.success('Bron bekor qilindi')
       onDone()
@@ -406,17 +403,17 @@ function CancelModal({ open, onClose, b, onDone }: { open: boolean; onClose: () 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-2xl bg-brand-50 p-4">
                   <div className="text-xs font-semibold uppercase text-brand-700">Qaytariladi</div>
-                  <div className="mt-1 text-xl font-extrabold text-brand-800">{money(p.refund_amount)}</div>
+                  <div className="mt-1 text-xl font-extrabold text-brand-800">{money(p.refund_tiyin)}</div>
                 </div>
-                <div className={cx('rounded-2xl p-4', Number(p.penalty_amount) > 0 ? 'bg-rose-50' : 'bg-ink-50')}>
-                  <div className={cx('text-xs font-semibold uppercase', Number(p.penalty_amount) > 0 ? 'text-rose-700' : 'text-ink-500')}>Jarima</div>
-                  <div className={cx('mt-1 text-xl font-extrabold', Number(p.penalty_amount) > 0 ? 'text-rose-700' : 'text-ink-700')}>{money(p.penalty_amount)}</div>
+                <div className={cx('rounded-2xl p-4', p.penalty_tiyin > 0 ? 'bg-rose-50' : 'bg-ink-50')}>
+                  <div className={cx('text-xs font-semibold uppercase', p.penalty_tiyin > 0 ? 'text-rose-700' : 'text-ink-500')}>Jarima</div>
+                  <div className={cx('mt-1 text-xl font-extrabold', p.penalty_tiyin > 0 ? 'text-rose-700' : 'text-ink-700')}>{money(p.penalty_tiyin)}</div>
                 </div>
               </div>
             ) : (
               <p className="text-[15px] text-ink-600">Siz hali to'lov qilmagansiz — bekor qilish bepul.</p>
             )}
-            {paid && Number(p.penalty_amount) > 0 && <p className="text-sm text-ink-500">Qabulga 24 soatdan kam vaqt qolgani uchun summaning bir qismi shifokorga kompensatsiya sifatida o'tkaziladi.</p>}
+            {paid && p.penalty_tiyin > 0 && <p className="text-sm text-ink-500">Qabulga 24 soatdan kam vaqt qolgani uchun summaning bir qismi shifokorga kompensatsiya sifatida o'tkaziladi.</p>}
             <div>
               <span className="label">Sabab (ixtiyoriy)</span>
               <Select value={reason} onChange={(e) => setReason(e.target.value)}>
@@ -440,7 +437,7 @@ function RescheduleModal({ open, onClose, b, onDone }: { open: boolean; onClose:
   const [date, setDate] = useState(b.start_at ? dayKey(b.start_at) : todayISO())
   const [slot, setSlot] = useState<PlacedSlot | null>(null)
   const m = useMutation({
-    mutationFn: () => api<Booking>(`/booking/bookings/${b.id}/reschedule`, { method: 'POST', body: { new_slot_id: slot!.id } }),
+    mutationFn: () => api<Booking>(`/bookings/${b.id}/reschedule`, { method: 'POST', body: { new_slot_id: slot!.id } }),
     onSuccess: () => {
       toast.success("Vaqt o'zgartirildi")
       onDone()
@@ -476,8 +473,14 @@ function ReviewModal({ open, onClose, b }: { open: boolean; onClose: () => void;
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')
   const [anon, setAnon] = useState(false)
+  const { user } = useAuth()
   const m = useMutation({
-    mutationFn: () => api<{ status: string }>(`/booking/bookings/${b.id}/review`, { method: 'POST', body: { rating, comment, is_anonymous: anon } }),
+    // review-service shaxsiy ma'lumot saqlamaydi — muallif ismi ilovadan (ommaviy sahifada "Aziz T.")
+    mutationFn: () =>
+      api<{ status: string }>('/reviews', {
+        method: 'POST',
+        body: { booking_id: b.id, rating, comment, is_anonymous: anon, author_name: anon ? '' : user?.full_name ?? '' },
+      }),
     onSuccess: (r) => {
       toast.success(r.status === 'pending' ? "Rahmat! Sharhingiz moderatsiyadan so'ng chiqadi" : 'Rahmat! Sharhingiz e‘lon qilindi')
       onClose()
@@ -516,7 +519,7 @@ function DisputeModal({ open, onClose, b }: { open: boolean; onClose: () => void
   const [reason, setReason] = useState('poor_service')
   const [description, setDescription] = useState('')
   const m = useMutation({
-    mutationFn: () => api<{ due_at: string }>(`/booking/bookings/${b.id}/disputes`, { method: 'POST', body: { reason, description } }),
+    mutationFn: () => api<Dispute>('/disputes', { method: 'POST', body: { booking_id: b.id, reason, description } }),
     onSuccess: (d) => {
       toast.success(`Murojaatingiz qabul qilindi. ${dateLong(d.due_at)} gacha ko'rib chiqiladi`)
       onClose()

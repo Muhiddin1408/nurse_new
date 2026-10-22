@@ -7,8 +7,8 @@ import {
   Search, ShieldCheck, Star, Stethoscope, Users,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { useClinics, useSpecializations } from '@/lib/queries'
-import type { DoctorList } from '@/lib/types'
+import { searchDoctors, useClinics, useSpecializations } from '@/lib/queries'
+import type { Review } from '@/lib/types'
 import { DoctorCard, DoctorCardSkeleton, specIcon, specTone } from '@/components/client'
 import { Avatar, Button, Skeleton, Stars, cx } from '@/components/ui'
 
@@ -231,7 +231,7 @@ function Specializations() {
 function TopDoctors() {
   const { data, isLoading } = useQuery({
     queryKey: ['doctors', 'top'],
-    queryFn: () => api<{ results: DoctorList[] }>('/catalog/search', { auth: false, query: { sort: 'rating', limit: 8 } }).then((r) => r.results),
+    queryFn: () => searchDoctors({ sort: 'rating', limit: 8 }).then((r) => r.results),
   })
   return (
     <section className="bg-white py-16 sm:py-20">
@@ -398,7 +398,7 @@ function Clinics() {
 function Testimonials() {
   const { data: doctors } = useQuery({
     queryKey: ['doctors', 'top'],
-    queryFn: () => api<{ results: DoctorList[] }>('/catalog/search', { auth: false, query: { sort: 'rating', limit: 8 } }).then((r) => r.results),
+    queryFn: () => searchDoctors({ sort: 'rating', limit: 8 }).then((r) => r.results),
   })
   const ids = doctors?.slice(0, 3).map((d) => d.id) ?? []
   const { data: reviews } = useQuery({
@@ -407,7 +407,7 @@ function Testimonials() {
     queryFn: async () => {
       const all = await Promise.all(
         ids.map((id, i) =>
-          api<{ id: string; rating: number; comment: string; author: string | null }[]>(`/catalog/doctors/${id}/reviews`, { auth: false, query: { limit: 2 } }).then((rs) =>
+          api<Review[]>('/reviews', { auth: false, query: { doctor_id: id, limit: 2 } }).then((rs) =>
             rs.map((r) => ({ ...r, doctor: doctors![i].full_name })),
           ),
         ),

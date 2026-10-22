@@ -1,0 +1,17 @@
+# gitleaks (CI: platform.yml → secrets-scan; lokal: pre-commit). Standart qoidalar + MedBron yo'llari.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test vektorlari va namuna fayllar — haqiqiy sir emas"
+paths = [
+  '''libs/testdata/.*\.json''',
+  '''.*\.env\.example''',
+  '''db\.sqlite3.*''',
+]
+# Testlardagi soxta parollar — faqat aniq qiymatlar (test papkalari to'liq ochilmaydi)
+# + yaroqsiz PEM vektori (tanasi faqat `AA==`) — kalit emas, xato yo'lini sinaydi
+regexes = [
+  '''change-me''', '''Kuchli-parol-123''', '''[A-Za-z0-9]+-Passw0rd[!A-Za-z0-9-]*''',
+  '''-----BEGIN PRIVATE KEY-----\\nAA==\\n-----END PRIVATE KEY-----''',
+]

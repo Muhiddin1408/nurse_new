@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/_envelope.v1.json",
+  "title": "MedBron event envelope v1",
+  "description": "Barcha eventlar uchun yagona konvert (BLUEPRINT 8.3). `data` sxemasi har event faylida.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "event_version",
+    "occurred_at",
+    "producer",
+    "trace_id",
+    "aggregate_type",
+    "aggregate_id",
+    "data"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "event_type": {
+      "type": "string",
+      "pattern": "^[a-z_]+\\.[a-z_]+$"
+    },
+    "event_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": {
+      "type": "string",
+      "pattern": "^[a-z-]+(-service|-gateway)$"
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "aggregate_type": {
+      "type": "string"
+    },
+    "aggregate_id": {
+      "type": "string"
+    },
+    "data": {
+      "type": "object"
+    }
+  }
+}

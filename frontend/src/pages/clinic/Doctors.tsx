@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Pause, Play, Star, UserPlus, Users, XCircle } from 'lucide-react'
-import { ApiError } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
+import { useDoctors } from '@/lib/queries'
+import type { DoctorList } from '@/lib/types'
 import { useToast } from '@/lib/toast'
 import { Avatar, Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, ListSkeleton, Modal, PageHeader, Segmented, StatusBadge } from '@/components/ui'
 import { useClinic } from './ctx'
-import { AFFILIATION_STATUS, PhoneField } from './shared'
+import { AFFILIATION_STATUS, useDebounced } from './shared'
 import type { ClinicDoctorRow } from './types'
 
 type Action = 'pause' | 'resume' | 'end'
@@ -36,15 +38,14 @@ export default function Doctors() {
     queryKey: ['clinic', clinicId, 'doctors'],
     queryFn: () => capi<ClinicDoctorRow[]>('/clinic/doctors'),
   })
+  // Reyting va mutaxassislik — ochiq katalog kartochkasidan (faqat tasdiqlangan shifokorlar)
+  const pub = useDoctors((q.data ?? []).map((r) => r.doctor_id))
 
   const act = useMutation({
     mutationFn: ({ row, action }: { row: ClinicDoctorRow; action: Action }) =>
-      capi<{ affiliation_id: string; status: string; active_bookings_kept: number }>(`/clinic/doctors/${row.affiliation_id}/${action}`, { method: 'POST' }),
+      capi<{ affiliation_id: string; status: string }>(`/clinic/doctors/${row.affiliation_id}/${action}`, { method: 'POST' }),
     onSuccess: (r) => {
-      toast.success(
-        `Holat: ${AFFILIATION_STATUS[r.status as keyof typeof AFFILIATION_STATUS]?.label ?? r.status}` +
-          (r.active_bookings_kept ? ` · ${r.active_bookings_kept} ta faol bron saqlandi` : ''),
-      )
+      toast.success(`Holat: ${AFFILIATION_STATUS[r.status as keyof typeof AFFILIATION_STATUS]?.label ?? r.status}`)
       setPending(null)
       qc.invalidateQueries({ queryKey: ['clinic', clinicId] })
     },
@@ -91,29 +92,32 @@ export default function Doctors() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-          {rows.map((r) => (
+          {rows.map((r) => {
+            const d = pub.byId.get(r.doctor_id)
+            const specs = d?.specializations.map((x) => x.name) ?? []
+            return (
             <div key={r.affiliation_id} className="card flex min-w-0 flex-col p-5">
               <div className="flex items-start gap-3.5">
-                <Avatar name={r.doctor} size={52} />
+                <Avatar name={r.doctor_name} size={52} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-bold text-ink-900">{r.doctor}</div>
-                  <div className="truncate text-sm text-ink-500">{r.position || r.specializations.join(', ') || '—'}</div>
+                  <div className="truncate font-bold text-ink-900">{r.doctor_name}</div>
+                  <div className="truncate text-sm text-ink-500">{r.position || specs.join(', ') || '—'}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <StatusBadge status={r.status} map={AFFILIATION_STATUS} />
                     {r.doctor_status !== 'approved' && <Badge tone="amber">Profil: {r.doctor_status}</Badge>}
                   </div>
                 </div>
-                {Number(r.rating) > 0 && (
+                {Number(d?.rating) > 0 && (
                   <span className="chip shrink-0 bg-amber-50 text-amber-700">
                     <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                    {Number(r.rating).toFixed(1)}
-                    <span className="font-medium text-amber-600/70">({r.reviews_count})</span>
+                    {Number(d?.rating).toFixed(1)}
+                    <span className="font-medium text-amber-600/70">({d?.reviews_count})</span>
                   </span>
                 )}
               </div>
-              {r.specializations.length > 0 && (
+              {specs.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {r.specializations.map((s) => (
+                  {specs.map((s) => (
                     <span key={s} className="chip bg-ink-50 text-ink-600">{s}</span>
                   ))}
                 </div>
@@ -132,7 +136,8 @@ export default function Doctors() {
                 )}
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -150,8 +155,8 @@ export default function Doctors() {
           danger={ACTION_TEXT[pending.action].danger}
         >
           <div className="mt-4 flex items-center gap-3 rounded-2xl bg-ink-50 p-3">
-            <Avatar name={pending.row.doctor} size={40} className="rounded-xl" />
-            <div className="font-semibold text-ink-900">{pending.row.doctor}</div>
+            <Avatar name={pending.row.doctor_name} size={40} className="rounded-xl" />
+            <div className="font-semibold text-ink-900">{pending.row.doctor_name}</div>
           </div>
         </ConfirmDialog>
       )}
@@ -163,15 +168,24 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   const { capi, clinicId } = useClinic()
   const qc = useQueryClient()
   const toast = useToast()
-  const [digits, setDigits] = useState('')
+  const [search, setSearch] = useState('')
+  const [chosen, setChosen] = useState<DoctorList | null>(null)
   const [position, setPosition] = useState('')
+  const dq = useDebounced(search.trim(), 300)
+  // Taklif — katalogdagi (tasdiqlangan) shifokorga, `doctor_id` bo'yicha (telefon raqamlar ochiq qidirilmaydi)
+  const found = useQuery({
+    queryKey: ['catalog', 'doctors', 'invite', dq],
+    queryFn: () => api<DoctorList[]>('/catalog/doctors', { auth: false, query: { q: dq, limit: 8 } }),
+    enabled: open && dq.length >= 2,
+  })
 
   const m = useMutation({
-    mutationFn: () => capi<ClinicDoctorRow>('/clinic/doctors/invite', { method: 'POST', body: { phone: `+998${digits}`, position } }),
-    onSuccess: (r) => {
-      toast.success(`${r.doctor} ga taklif yuborildi`)
+    mutationFn: () => capi<ClinicDoctorRow>('/clinic/doctors/invite', { method: 'POST', body: { doctor_id: chosen!.id, position } }),
+    onSuccess: () => {
+      toast.success(`${chosen?.full_name} ga taklif yuborildi`)
       qc.invalidateQueries({ queryKey: ['clinic', clinicId, 'doctors'] })
-      setDigits('')
+      setSearch('')
+      setChosen(null)
       setPosition('')
       onClose()
     },
@@ -187,14 +201,32 @@ function InviteModal({ open, onClose }: { open: boolean; onClose: () => void }) 
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Bekor</Button>
-          <Button loading={m.isPending} disabled={digits.length !== 9} onClick={() => m.mutate()}>Taklif yuborish</Button>
+          <Button loading={m.isPending} disabled={!chosen} onClick={() => m.mutate()}>Taklif yuborish</Button>
         </>
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-ink-500">Shifokor Turon Clinic'da ro'yxatdan o'tgan bo'lishi kerak. U taklifni o'z kabinetida qabul qiladi.</p>
-        <Field label="Telefon raqami" error={m.error instanceof ApiError ? m.error.fields.phone : undefined}>
-          <PhoneField value={digits} onChange={setDigits} autoFocus />
+        <p className="text-sm text-ink-500">Shifokor Turon Clinic'da tasdiqlangan bo'lishi kerak. U taklifni o'z kabinetida qabul qiladi.</p>
+        <Field label="Shifokor" error={m.error instanceof ApiError ? m.error.fields.doctor_id : undefined}>
+          {chosen ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-brand-50 p-3 ring-1 ring-brand-100">
+              <Avatar name={chosen.full_name} size={36} className="rounded-xl" />
+              <div className="min-w-0 flex-1 truncate font-semibold text-ink-900">{chosen.full_name}</div>
+              <Button size="sm" variant="ghost" onClick={() => setChosen(null)}>O'zgartirish</Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ism bo'yicha qidirish" autoFocus />
+              {(found.data ?? []).map((d) => (
+                <button key={d.id} type="button" onClick={() => setChosen(d)} className="flex w-full items-center gap-3 rounded-2xl p-2.5 text-left hover:bg-ink-50">
+                  <Avatar name={d.full_name} size={32} className="rounded-lg" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink-900">{d.full_name}</span>
+                  <span className="truncate text-xs text-ink-400">{d.specializations.map((x) => x.name).join(', ')}</span>
+                </button>
+              ))}
+              {dq.length >= 2 && found.data?.length === 0 && <p className="text-sm text-ink-400">Topilmadi</p>}
+            </div>
+          )}
         </Field>
         <Field label="Lavozim" hint="Masalan: Bosh shifokor, Kardiolog">
           <Input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Lavozim (ixtiyoriy)" maxLength={100} />

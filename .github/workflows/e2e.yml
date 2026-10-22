@@ -1,0 +1,55 @@
+# Bosqichlarning "tayyor" mezoni: ko'chirilgan servislar (identity + asosiy domen + pul + real-time) + infra + Kong Docker'da va tests/e2e.
+name: e2e
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - backend/**
+      - libs/py-common/**
+      - contracts/**
+      - tests/e2e/**
+      - scripts/e2e.sh
+      - scripts/dev-env.py
+      - .github/workflows/e2e.yml
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -r scripts/requirements.txt -r tests/e2e/requirements.txt
+      - name: backend/infra/.env (CI uchun tasodifiy sirlar)
+        run: |
+          {
+            echo "RABBITMQ_USER=medbron"
+            echo "RABBITMQ_PASSWORD=$(openssl rand -hex 16)"
+            echo "RABBITMQ_ERLANG_COOKIE=$(openssl rand -hex 16)"
+            echo "S3_ADMIN_ACCESS_KEY=medbron-admin"
+            echo "S3_ADMIN_SECRET_KEY=$(openssl rand -hex 24)"
+            echo "S3_FILE_SERVICE_ACCESS_KEY=file-service"
+            echo "S3_FILE_SERVICE_SECRET_KEY=$(openssl rand -hex 24)"
+            echo "GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+          } > backend/infra/.env
+      - run: scripts/e2e.sh
+      - name: Loglar (xato bo'lsa)
+        if: failure()
+        run: |
+          for s in auth-service admin-service user-service file-service notification-service \
+                   catalog-service schedule-service pricing-service booking-service payment-service billing-service \
+                   review-service dispute-service search-service analytics-service ws-gateway; do
+            (cd backend/$s && docker compose logs --tail=200) || true
+          done
+          (cd backend/gateway-kong && docker compose logs --tail=200) || true
+      - if: always()
+        run: scripts/e2e.sh --down

@@ -3,11 +3,13 @@ import { useQuery } from '@tanstack/react-query'
 import { Package } from 'lucide-react'
 import { api } from '@/lib/api'
 import { dateLong } from '@/lib/format'
+import { useDoctors } from '@/lib/queries'
 import type { Enrollment } from '@/lib/types'
 import { Badge, Button, EmptyState, ErrorState, ListSkeleton, PageHeader } from '@/components/ui'
 
 export default function PackagesPage() {
-  const q = useQuery({ queryKey: ['packages', 'mine'], queryFn: () => api<Enrollment[]>('/booking/packages/mine') })
+  const q = useQuery({ queryKey: ['packages', 'mine'], queryFn: () => api<Enrollment[]>('/pricing/packages/mine') })
+  const docs = useDoctors((q.data ?? []).map((e) => e.doctor_id))
   return (
     <div>
       <PageHeader title="Paketlarim" subtitle="Oldindan olingan seanslar va chegirmalar" />
@@ -31,7 +33,7 @@ export default function PackagesPage() {
                     <div className="font-bold">{e.package_name}</div>
                     <Badge tone="violet" className="bg-white/90">−{e.discount_percent}%</Badge>
                   </div>
-                  <div className="mt-1 text-sm text-white/75">{e.service_name}</div>
+                  <div className="mt-1 text-sm text-white/75">{docs.byId.get(e.doctor_id)?.full_name ?? ''}</div>
                 </div>
                 <div className="p-5">
                   <div className="flex items-end justify-between">

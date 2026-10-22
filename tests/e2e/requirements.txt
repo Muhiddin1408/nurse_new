@@ -1,0 +1,6 @@
+# tests/e2e — ishlab turgan stack'ga (Kong orqali) qarshi testlar
+pytest==9.1.1
+httpx==0.28.1
+pyotp==2.9.0
+pillow==11.3.0
+websockets==15.0.1

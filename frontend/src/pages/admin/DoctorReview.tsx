@@ -11,7 +11,6 @@ import {
   GraduationCap,
   Home,
   Languages,
-  Phone,
   RefreshCw,
   RotateCcw,
   RotateCw,
@@ -21,7 +20,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { dateLong, phone, relativeDateTime } from '@/lib/format'
+import { dateLong, relativeDateTime } from '@/lib/format'
 import { useSpecializations } from '@/lib/queries'
 import { useToast } from '@/lib/toast'
 import { Avatar, Badge, Button, EmptyState, Modal, ErrorState, Field, Skeleton, StatusBadge, Textarea, cx } from '@/components/ui'
@@ -45,13 +44,18 @@ export default function DoctorReview() {
   const [reason, setReason] = useState('')
   const [docIdx, setDocIdx] = useState(0)
 
-  const q = useQuery({ queryKey: ['mod', 'doctor', id], queryFn: () => api<ModerationDoctor>(`/moderation/doctors/${id}`), enabled: !!id })
+  const q = useQuery({
+    queryKey: ['admin', 'doctor', id],
+    queryFn: () => api<ModerationDoctor>(`/admin/moderation/doctors/${id}`, { realm: 'admin' }),
+    enabled: !!id,
+  })
 
   const act = useMutation({
-    mutationFn: (a: Action) => api<ModerationDoctor>(`/moderation/doctors/${id}/${a}`, { method: 'POST', body: ACTIONS[a].reason ? { reason: reason.trim() } : undefined }),
+    mutationFn: (a: Action) =>
+      api<ModerationDoctor>(`/admin/moderation/doctors/${id}/${a}`, { method: 'POST', body: ACTIONS[a].reason ? { reason: reason.trim() } : null, realm: 'admin' }),
     onSuccess: (d, a) => {
-      qc.setQueryData(['mod', 'doctor', id], d)
-      qc.invalidateQueries({ queryKey: ['mod', 'doctors'] })
+      qc.setQueryData(['admin', 'doctor', id], d)
+      qc.invalidateQueries({ queryKey: ['admin', 'doctors'] })
       toast.success(ACTIONS[a].done)
       setAction(null)
       setReason('')
@@ -100,7 +104,6 @@ export default function DoctorReview() {
               <StatusBadge status={d.status} map={DOCTOR_STATUS} />
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-500">
-              <a href={`tel:${d.phone}`} className="flex items-center gap-1.5 hover:text-brand-700"><Phone className="h-4 w-4" />{phone(d.phone)}</a>
               {d.status === 'pending' && <SlaBadge due={d.sla_due_at} />}
             </div>
           </div>
@@ -173,9 +176,6 @@ export default function DoctorReview() {
         <div className="card flex flex-col overflow-hidden xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)]">
           <div className="flex items-center justify-between gap-3 border-b border-ink-100 px-5 py-3.5">
             <h2 className="flex items-center gap-2 text-lg font-bold text-ink-900"><FileText className="h-5 w-5 text-brand-600" />Hujjatlar ({docs.length})</h2>
-            <Button variant="ghost" size="sm" icon={<RefreshCw className={cx('h-4 w-4', q.isFetching && 'animate-spin')} />} onClick={() => q.refetch()} title="Havolalar 5 daqiqa amal qiladi">
-              Yangilash
-            </Button>
           </div>
           {docs.length === 0 ? (
             <EmptyState icon={<FileText className="h-7 w-7" />} title="Hujjat yuklanmagan" text="Shifokor diplom va litsenziya yuklamagan." />
@@ -189,11 +189,11 @@ export default function DoctorReview() {
                     className={cx('shrink-0 rounded-xl px-3 py-2 text-left text-xs font-semibold ring-1 transition', i === docIdx ? 'bg-brand-50 text-brand-800 ring-brand-200' : 'bg-white text-ink-600 ring-ink-200 hover:bg-ink-50')}
                   >
                     <div>{DOC_KIND[doc.kind] ?? doc.kind}</div>
-                    <div className="max-w-[140px] truncate font-normal text-ink-400">{doc.original_name}</div>
+                    <div className="max-w-[140px] truncate font-normal text-ink-400">{relativeDateTime(doc.created_at)}</div>
                   </button>
                 ))}
               </div>
-              <DocViewer key={docs[docIdx]?.id} doc={docs[Math.min(docIdx, docs.length - 1)]} />
+              <DocViewer key={docs[docIdx]?.id} doctorId={d.id} doc={docs[Math.min(docIdx, docs.length - 1)]} />
             </>
           )}
         </div>
@@ -240,7 +240,15 @@ function Info({ label, value }: { label: ReactNode; value: ReactNode }) {
   )
 }
 
-function DocViewer({ doc }: { doc: ModDocument }) {
+/** Hujjat havolasi qisqa muddatli (presigned) — har ochilishda catalog orqali olinadi (audit). */
+function DocViewer({ doctorId, doc }: { doctorId: string; doc: ModDocument }) {
+  const link = useQuery({
+    queryKey: ['admin', 'doctor', doctorId, 'document', doc.id],
+    queryFn: () => api<{ url: string; expires_in: number | null }>(`/admin/moderation/doctors/${doctorId}/documents/${doc.id}/url`, { realm: 'admin' }),
+    staleTime: 4 * 60_000,
+  })
+  const url = link.data?.url
+  const name = DOC_KIND[doc.kind] ?? doc.kind
   const [zoom, setZoom] = useState(1)
   const [rot, setRot] = useState(0)
   const isImage = doc.content_type.startsWith('image/')
@@ -249,7 +257,7 @@ function DocViewer({ doc }: { doc: ModDocument }) {
   return (
     <div className="flex min-h-[420px] flex-1 flex-col">
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs text-ink-500">
-        <span className="truncate">{doc.original_name} · {(doc.size / 1024).toFixed(0)} KB</span>
+        <span className="truncate">{name} · {doc.content_type}</span>
         <div className="flex items-center gap-1">
           {isImage && (
             <>
@@ -260,28 +268,33 @@ function DocViewer({ doc }: { doc: ModDocument }) {
               <IconBtn label="O'ngga burish" onClick={() => setRot((r) => r + 90)}><RotateCw className="h-4 w-4" /></IconBtn>
             </>
           )}
-          <a href={doc.download_url} target="_blank" rel="noreferrer" className="ml-1 flex items-center gap-1 rounded-lg px-2 py-1.5 font-semibold text-brand-700 hover:bg-brand-50">
+          <IconBtn label="Havolani yangilash" onClick={() => link.refetch()}><RefreshCw className={cx('h-4 w-4', link.isFetching && 'animate-spin')} /></IconBtn>
+          <a href={url} target="_blank" rel="noreferrer" className="ml-1 flex items-center gap-1 rounded-lg px-2 py-1.5 font-semibold text-brand-700 hover:bg-brand-50">
             <ExternalLink className="h-4 w-4" /> Ochish
           </a>
         </div>
       </div>
       <div className="relative flex-1 overflow-auto bg-ink-100/70">
-        {isImage ? (
+        {link.error ? (
+          <ErrorState error={link.error} onRetry={() => link.refetch()} />
+        ) : !url ? (
+          <Skeleton className="m-4 h-[380px] rounded-2xl" />
+        ) : isImage ? (
           <div className="flex min-h-full items-center justify-center p-4">
             <img
-              src={doc.download_url}
-              alt={doc.original_name}
+              src={url}
+              alt={name}
               className="max-w-full rounded-lg shadow-soft transition-transform duration-200"
               style={{ transform: `scale(${zoom}) rotate(${rot}deg)`, transformOrigin: 'center' }}
             />
           </div>
         ) : isPdf ? (
-          <iframe src={doc.download_url} title={doc.original_name} className="h-full min-h-[420px] w-full border-0" />
+          <iframe src={url} title={name} className="h-full min-h-[420px] w-full border-0" />
         ) : (
           <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-3 p-6 text-center text-sm text-ink-500">
             <BadgeCheck className="h-8 w-8 text-ink-300" />
             Bu formatni brauzerda ko'rsatib bo'lmaydi.
-            <a href={doc.download_url} target="_blank" rel="noreferrer"><Button size="sm" variant="outline">Yuklab olish</Button></a>
+            <a href={url} target="_blank" rel="noreferrer"><Button size="sm" variant="outline">Yuklab olish</Button></a>
           </div>
         )}
       </div>

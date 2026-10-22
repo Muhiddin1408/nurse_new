@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/slot.released.v1.json",
+  "title": "slot.released",
+  "description": "Band/ushlangan slot qayta bo'shadi — booking waitlist'dagi navbatdagi mijozga taklif yuboradi; hold_expired bo'lsa kutilayotgan bronni expire qiladi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "slot.released"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "slot"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot_id",
+        "doctor_id",
+        "clinic_id",
+        "place",
+        "start_at",
+        "end_at",
+        "hold_ref",
+        "reason"
+      ],
+      "properties": {
+        "slot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "clinic_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "place": {
+          "type": "string",
+          "enum": [
+            "clinic",
+            "home"
+          ]
+        },
+        "start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "hold_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "hold_expired",
+            "booking_cancelled",
+            "booking_expired",
+            "booking_rescheduled",
+            "confirmation_failed",
+            "unblocked"
+          ]
+        }
+      }
+    }
+  }
+}

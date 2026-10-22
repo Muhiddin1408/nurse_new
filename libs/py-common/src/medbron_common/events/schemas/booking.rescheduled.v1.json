@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/booking.rescheduled.v1.json",
+  "title": "booking.rescheduled",
+  "description": "Bron boshqa slotga ko'chirildi: yangi slot sinxron band qilingan, eskisini schedule-service bo'shatadi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "booking.rescheduled"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "booking"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "booking_id",
+        "number",
+        "client_id",
+        "doctor_id",
+        "old_slot_id",
+        "new_slot_id",
+        "old_start_at",
+        "new_start_at",
+        "new_end_at",
+        "rescheduled_by",
+        "rescheduled_count"
+      ],
+      "properties": {
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "number": {
+          "type": "string"
+        },
+        "client_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "old_slot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "new_slot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "old_start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "new_start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "new_end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "rescheduled_by": {
+          "type": "string",
+          "enum": [
+            "client",
+            "doctor",
+            "clinic_admin",
+            "admin",
+            "system"
+          ]
+        },
+        "rescheduled_count": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

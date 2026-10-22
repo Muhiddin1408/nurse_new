@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Award, BadgeCheck, Briefcase, Home, Phone, Send, ShieldCheck, Sparkles } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { dateLong, phone } from '@/lib/format'
 import { Avatar, Badge, Button, ErrorState, Field, Input, PageHeader, Skeleton, Textarea, Toggle, cx } from '@/components/ui'
@@ -30,9 +31,14 @@ export default function ProfilePage() {
   const toast = useToast()
   const profile = useDoctorProfile()
   const specs = useSpecs()
-  // GET /doctor/profile yo'q — bo'sh PATCH joriy ochiq profilni o'zgartirmasdan qaytaradi
-  const pub = useQuery({ queryKey: ['doctor', 'public-profile'], queryFn: () => api<PublicProfile>('/doctor/profile', { method: 'PATCH', body: {} }) })
-  const tg = useQuery({ queryKey: ['doctor', 'telegram'], queryFn: () => api<{ url: string; expires_in: number; linked: boolean }>('/doctor/telegram/link'), staleTime: 5 * 60_000 })
+  const { user } = useAuth()
+  const pub = useQuery({ queryKey: ['doctor', 'public-profile'], queryFn: () => api<PublicProfile>('/doctor/profile') })
+  // Telegram ulash havolasi (notification-service) — bir martalik token, 5 daqiqa
+  const tg = useQuery({
+    queryKey: ['doctor', 'telegram'],
+    queryFn: () => api<{ url: string; expires_in: number; linked: boolean }>('/telegram/link-token', { method: 'POST' }),
+    staleTime: 5 * 60_000,
+  })
 
   const [form, setForm] = useState<PublicProfile | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -107,7 +113,7 @@ export default function ProfilePage() {
               </div>
               <div className="mt-4 space-y-2.5 text-sm text-ink-600">
                 <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-ink-400" /> {phone(p?.phone)}
+                  <Phone className="h-4 w-4 text-ink-400" /> {phone(user?.phone)}
                 </div>
                 <div className="flex items-center gap-2">
                   <Briefcase className="h-4 w-4 text-ink-400" /> {p?.experience_years ?? '—'} yil tajriba

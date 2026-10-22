@@ -1,17 +1,19 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, Scale, Stethoscope, User } from 'lucide-react'
+import { Clock, Scale } from 'lucide-react'
 import { api } from '@/lib/api'
-import { money, relativeDateTime } from '@/lib/format'
+import { money, relativeDateTime, toTiyin } from '@/lib/format'
 import { useToast } from '@/lib/toast'
-import type { Dispute } from '@/lib/types'
-import { Button, EmptyState, ErrorState, Field, Input, ListSkeleton, Modal, PageHeader, Segmented, StatusBadge, Textarea, cx } from '@/components/ui'
-import { DISPUTE_REASON, DISPUTE_STATUS } from './types'
+import { Button, EmptyState, ErrorState, Field, Input, ListSkeleton, Modal, PageHeader, Segmented, StatusBadge, Textarea, Toggle, cx } from '@/components/ui'
+import { DISPUTE_REASON, DISPUTE_RESOLUTION, DISPUTE_STATUS, type AdminDispute } from './types'
 
 export default function Disputes() {
   const [tab, setTab] = useState<'open' | 'resolved'>('open')
-  const [target, setTarget] = useState<Dispute | null>(null)
-  const q = useQuery({ queryKey: ['mod', 'disputes'], queryFn: () => api<Dispute[]>('/booking/disputes') })
+  const [target, setTarget] = useState<AdminDispute | null>(null)
+  const q = useQuery({
+    queryKey: ['admin', 'disputes'],
+    queryFn: () => api<AdminDispute[]>('/admin/disputes', { query: { limit: 200 }, realm: 'admin' }),
+  })
 
   const all = q.data ?? []
   const list = all
@@ -43,7 +45,7 @@ export default function Disputes() {
                       <span className="font-bold text-ink-900">{DISPUTE_REASON[d.reason] ?? d.reason}</span>
                       <StatusBadge status={d.status} map={DISPUTE_STATUS} />
                     </div>
-                    <div className="mt-1 font-mono text-xs text-ink-400">Bron: {d.booking_id.slice(0, 8)}… · {relativeDateTime(d.created_at)}</div>
+                    <div className="mt-1 font-mono text-xs text-ink-400">Bron {d.booking_number} · {money(d.paid_tiyin)} · {relativeDateTime(d.created_at)}</div>
                   </div>
                   {d.status === 'open' && (
                     <span className={cx('chip shrink-0', overdue ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200' : 'bg-amber-50 text-amber-700')}>
@@ -56,8 +58,12 @@ export default function Disputes() {
                 {d.description && <p className="mt-3 whitespace-pre-line rounded-2xl bg-ink-50 p-4 text-[15px] leading-relaxed text-ink-700">{d.description}</p>}
                 {d.status !== 'open' && d.resolution_note && (
                   <div className="mt-3 rounded-2xl bg-brand-50/60 p-4 text-sm text-ink-700 ring-1 ring-brand-100">
-                    <b className="text-brand-800">Qaror:</b> {d.resolution_note}
-                    {d.refund_id && <span className="ml-1 text-brand-700">· pul qaytarildi</span>}
+                    <b className="text-brand-800">{d.resolution ? DISPUTE_RESOLUTION[d.resolution] : 'Qaror'}:</b> {d.resolution_note}
+                    {d.refund_tiyin > 0 && (
+                      <span className="ml-1 text-brand-700">
+                        · {money(d.refund_tiyin)} {d.refunded_tiyin >= d.refund_tiyin ? 'qaytarildi' : 'qaytarilmoqda'}
+                      </span>
+                    )}
                   </div>
                 )}
                 {d.status === 'open' && (
@@ -75,24 +81,30 @@ export default function Disputes() {
   )
 }
 
-function ResolveModal({ dispute, onClose }: { dispute: Dispute; onClose: () => void }) {
+type Resolution = 'refund_full' | 'refund_partial' | 'rejected'
+
+function ResolveModal({ dispute, onClose }: { dispute: AdminDispute; onClose: () => void }) {
   const qc = useQueryClient()
   const toast = useToast()
-  const [side, setSide] = useState<'client' | 'doctor'>('client')
+  const [resolution, setResolution] = useState<Resolution>('refund_full')
+  const [liable, setLiable] = useState(false)
   const [note, setNote] = useState('')
   const [refund, setRefund] = useState('')
-  const refundClean = refund.replace(/\s/g, '').replace(',', '.')
-  const refundValid = !refundClean || /^\d+(\.\d{1,2})?$/.test(refundClean)
+  const partial = toTiyin(refund)
+  const partialValid = Number.isFinite(partial) && partial > 0 && partial <= dispute.paid_tiyin
+  const refundTiyin = resolution === 'refund_full' ? dispute.paid_tiyin : resolution === 'refund_partial' ? partial : 0
+  const valid = !!note.trim() && (resolution !== 'refund_partial' || partialValid)
 
   const m = useMutation({
     mutationFn: () =>
-      api<Dispute>(`/booking/disputes/${dispute.id}/resolve`, {
+      api<AdminDispute>(`/admin/disputes/${dispute.id}/resolve`, {
         method: 'POST',
-        body: { in_favor_of: side, note: note.trim(), ...(side === 'client' && refundClean ? { refund_amount: refundClean } : {}) },
+        body: { resolution, refund_tiyin: refundTiyin, doctor_liable: resolution !== 'rejected' && liable, note: note.trim() },
+        realm: 'admin',
       }),
     onSuccess: () => {
       toast.success('Nizo hal qilindi')
-      qc.invalidateQueries({ queryKey: ['mod', 'disputes'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'disputes'] })
       onClose()
     },
     onError: (e) => toast.error(e),
@@ -106,38 +118,47 @@ function ResolveModal({ dispute, onClose }: { dispute: Dispute; onClose: () => v
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Bekor</Button>
-          <Button loading={m.isPending} disabled={!note.trim() || !refundValid} onClick={() => m.mutate()}>Qarorni saqlash</Button>
+          <Button loading={m.isPending} disabled={!valid} onClick={() => m.mutate()}>Qarorni saqlash</Button>
         </>
       }
     >
       <div className="space-y-4">
         <div className="rounded-2xl bg-ink-50 p-3 text-sm text-ink-600">
-          <b className="text-ink-900">{DISPUTE_REASON[dispute.reason] ?? dispute.reason}</b>
+          <b className="text-ink-900">{DISPUTE_REASON[dispute.reason] ?? dispute.reason}</b> · Bron {dispute.booking_number} · To'langan {money(dispute.paid_tiyin)}
           {dispute.description && <p className="mt-1 line-clamp-3">{dispute.description}</p>}
         </div>
         <div>
-          <span className="label">Kimning foydasiga</span>
-          <div className="grid grid-cols-2 gap-3">
-            {([
-              { v: 'client', label: 'Mijoz', icon: User },
-              { v: 'doctor', label: 'Shifokor', icon: Stethoscope },
-            ] as const).map((o) => (
+          <span className="label">Qaror</span>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {(['refund_full', 'refund_partial', 'rejected'] as const).map((v) => (
               <button
-                key={o.v}
+                key={v}
                 type="button"
-                onClick={() => setSide(o.v)}
-                className={cx('flex items-center justify-center gap-2 rounded-2xl border-2 px-4 py-3 font-semibold transition', side === o.v ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-ink-200 text-ink-600 hover:border-ink-300')}
+                onClick={() => setResolution(v)}
+                className={cx('rounded-2xl border-2 px-3 py-3 text-sm font-semibold transition', resolution === v ? 'border-brand-500 bg-brand-50 text-brand-800' : 'border-ink-200 text-ink-600 hover:border-ink-300')}
               >
-                <o.icon className="h-4 w-4" />
-                {o.label}
+                {DISPUTE_RESOLUTION[v]}
               </button>
             ))}
           </div>
         </div>
-        {side === 'client' && (
-          <Field label="Qaytariladigan summa (so'm)" error={!refundValid ? "Noto'g'ri summa" : undefined} hint={refundClean && refundValid ? `${money(refundClean)} mijozga qaytariladi. Bron summasidan oshmasligi kerak.` : "Bo'sh qoldirilsa pul qaytarilmaydi"}>
+        {resolution === 'refund_partial' && (
+          <Field
+            label="Qaytariladigan summa (so'm)"
+            error={refund && !partialValid ? `0 dan katta va ${money(dispute.paid_tiyin)} dan oshmasin` : undefined}
+            hint={partialValid ? `${money(partial)} mijozga qaytariladi` : undefined}
+          >
             <Input inputMode="decimal" value={refund} onChange={(e) => setRefund(e.target.value.replace(/[^\d.,\s]/g, ''))} placeholder="0" />
           </Field>
+        )}
+        {resolution !== 'rejected' && (
+          <label className="flex items-start gap-3 rounded-2xl bg-ink-50 p-3 text-sm text-ink-700">
+            <Toggle checked={liable} onChange={setLiable} />
+            <span>
+              <b className="text-ink-900">Shifokor javobgar</b>
+              <span className="block text-ink-500">Qaytarilgan summa shifokor ulushidan ham ushlanadi (billing).</span>
+            </span>
+          </label>
         )}
         <Field label="Qaror izohi (majburiy)" hint="Mijoz va shifokorga ko'rsatiladi">
           <Textarea rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tekshiruv natijasi va qaror sababi" />

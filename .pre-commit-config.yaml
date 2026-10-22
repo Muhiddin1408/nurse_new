@@ -1,0 +1,20 @@
+# pre-commit install  — commit'dan oldin sirlar va generatsiya qilingan fayllar tekshiriladi.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: gen-events-check
+        name: event konstantalari katalogga mos
+        entry: python scripts/gen-events.py --check
+        language: system
+        pass_filenames: false
+        files: ^contracts/events/
+      - id: check-contracts
+        name: kontrakt va graf tekshiruvi
+        entry: python scripts/check-contracts.py
+        language: system
+        pass_filenames: false
+        files: ^(contracts/|docs/SERVICE_REGISTRY.md|backend/)

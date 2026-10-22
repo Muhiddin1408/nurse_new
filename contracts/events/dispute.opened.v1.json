@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/dispute.opened.v1.json",
+  "title": "dispute.opened",
+  "description": "Nizo ochildi (SLA 48 soat).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "dispute.opened"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "dispute"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispute_id",
+        "booking_id",
+        "raised_by",
+        "reason",
+        "due_at"
+      ],
+      "properties": {
+        "dispute_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "raised_by": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "due_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

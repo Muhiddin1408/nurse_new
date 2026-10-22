@@ -6,23 +6,16 @@ import {
   ArrowLeft, ArrowRight, Building2, CalendarClock, Check, CircleAlert, Clock, House, LocateFixed, MapPin, Plus, Tag, TicketPercent, UserRound,
 } from 'lucide-react'
 import { api, ApiError, uuid } from '@/lib/api'
-import { ageFrom, dateLong, minutes, money, relativeDateTime, sumMoney, time, todayISO, weekday } from '@/lib/format'
+import { ageFrom, dateLong, minutes, money, relativeDateTime, time, todayISO, weekday } from '@/lib/format'
 import { useAddresses, useDoctor, useDoctorServices, usePatients } from '@/lib/queries'
 import { useToast } from '@/lib/toast'
-import type { Address, Booking, Patient } from '@/lib/types'
+import type { Address, Booking, Patient, Quote } from '@/lib/types'
 import { SlotPicker, slotDay, useDaySlots, useFirstFreeDay, type Place, type PlacedSlot } from '@/components/SlotPicker'
 import { AddressForm, PatientForm } from '@/components/forms'
 import { Avatar, Button, ErrorState, Input, Modal, Money, Skeleton, Textarea, cx } from '@/components/ui'
 
 const STEPS = ['Xizmat', 'Vaqt', 'Bemor', 'Tasdiqlash'] as const
 
-interface Preview {
-  original_price: string
-  price_adjust_percent: number
-  discount_amount: string
-  discount_kind: string
-  total_price: string
-}
 
 const DISCOUNT_LABEL: Record<string, string> = {
   promo: 'Promo kod',
@@ -62,7 +55,7 @@ export default function BookingWizard() {
   const hasClinic = !!allServices.data?.some((s) => s.place === 'clinic')
   const chosen = services.filter((s) => serviceIds.includes(s.id))
   const duration = chosen.reduce((m, s) => m + s.duration_minutes, 0)
-  const subtotal = chosen.length ? sumMoney(chosen.map((s) => s.price)) : '0.00'
+  const subtotal = chosen.reduce((sum, s) => sum + s.price_tiyin, 0)
   const clinicNames = useMemo(() => Object.fromEntries((doctor.data?.clinics ?? []).map((c) => [c.id, c.name])), [doctor.data])
 
   // URL'dan kelgan slotni tiklash
@@ -105,7 +98,12 @@ export default function BookingWizard() {
 
   const preview = useQuery({
     queryKey: ['price-preview', doctorId, serviceIds, slot?.id, appliedPromo],
-    queryFn: () => api<Preview>('/booking/price-preview', { method: 'POST', body: { doctor_id: doctorId, service_ids: serviceIds, slot_id: slot?.id ?? null, promo_code: appliedPromo } }),
+    // pricing-service: vaqt bo'yicha narx foizi slotning o'zida (schedule `price_adjust_percent`)
+    queryFn: () =>
+      api<Quote>('/pricing/quote', {
+        method: 'POST',
+        body: { doctor_id: doctorId, service_ids: serviceIds, promo_code: appliedPromo, price_adjust_percent: slot?.price_adjust_percent ?? 0, place },
+      }),
     enabled: step === 3 && serviceIds.length > 0,
     retry: false,
   })
@@ -126,7 +124,7 @@ export default function BookingWizard() {
   const idemKey = useMemo(() => uuid(), [JSON.stringify(payload)]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = useMutation({
-    mutationFn: () => api<Booking>('/booking/bookings', { method: 'POST', body: payload, headers: { 'Idempotency-Key': idemKey } }),
+    mutationFn: () => api<Booking>('/bookings', { method: 'POST', body: payload, headers: { 'Idempotency-Key': idemKey } }),
     onSuccess: (b) => {
       qc.invalidateQueries({ queryKey: ['bookings'] })
       qc.invalidateQueries({ queryKey: ['slots', doctorId] })
@@ -134,9 +132,10 @@ export default function BookingWizard() {
     },
     onError: (e) => {
       const err = e as ApiError
-      if (err.status === 409 && (err.data as { code?: string })?.code === 'slot_taken') {
+      if (err.status === 409 && err.code === 'SLOT_TAKEN') {
         qc.invalidateQueries({ queryKey: ['slots', doctorId] })
-        setTaken({ detail: err.detail, alternatives: ((err.data as { alternatives?: [] }).alternatives ?? []) as { slot_id: string; start_at: string }[] })
+        const detail = (err.data as { detail?: { alternatives?: { slot_id: string; start_at: string }[] } })?.detail
+        setTaken({ detail: err.detail, alternatives: detail?.alternatives ?? [] })
         return
       }
       toast.error(err)
@@ -230,7 +229,7 @@ export default function BookingWizard() {
                                   <Clock className="h-3.5 w-3.5" /> {minutes(s.duration_minutes)}
                                 </span>
                               </span>
-                              <Money value={s.price} className="font-bold text-ink-900" />
+                              <Money tiyin={s.price_tiyin} className="font-bold text-ink-900" />
                             </button>
                           )
                         })}
@@ -334,7 +333,7 @@ export default function BookingWizard() {
                 {doctor.data ? <Avatar name={doctor.data.full_name.replace(/^Dr\.?\s*/, '')} size={52} /> : <Skeleton className="h-13 w-13 rounded-2xl" />}
                 <div className="min-w-0">
                   <div className="truncate font-bold text-ink-900">{doctor.data?.full_name ?? '...'}</div>
-                  <div className="truncate text-sm text-brand-700">{doctor.data?.specializations.join(', ')}</div>
+                  <div className="truncate text-sm text-brand-700">{doctor.data?.specializations.map((x) => x.name).join(', ')}</div>
                 </div>
               </div>
               <div className="space-y-3 p-5 text-sm">
@@ -346,7 +345,7 @@ export default function BookingWizard() {
                 {chosen.map((s) => (
                   <div key={s.id} className="flex justify-between gap-3">
                     <span className="text-ink-600">{s.name}</span>
-                    <Money value={s.price} className="shrink-0 font-semibold text-ink-900" />
+                    <Money tiyin={s.price_tiyin} className="shrink-0 font-semibold text-ink-900" />
                   </div>
                 ))}
                 {step === 3 && preview.data ? (
@@ -356,24 +355,24 @@ export default function BookingWizard() {
                         <span>Vaqt bo'yicha narx ({preview.data.price_adjust_percent > 0 ? '+' : ''}{preview.data.price_adjust_percent}%)</span>
                       </div>
                     )}
-                    {Number(preview.data.discount_amount) > 0 && (
+                    {preview.data.discount_tiyin > 0 && (
                       <div className="flex justify-between font-semibold text-brand-700">
                         <span className="flex items-center gap-1.5"><Tag className="h-4 w-4" /> {DISCOUNT_LABEL[preview.data.discount_kind] ?? 'Chegirma'}</span>
-                        <span>−{money(preview.data.discount_amount)}</span>
+                        <span>−{money(preview.data.discount_tiyin)}</span>
                       </div>
                     )}
                     <div className="flex items-end justify-between border-t border-ink-100 pt-3">
                       <span className="font-semibold text-ink-700">Jami</span>
                       <span className="text-right">
-                        {preview.data.original_price !== preview.data.total_price && <Money value={preview.data.original_price} strike className="mr-2 text-sm" />}
-                        <Money value={preview.data.total_price} className="text-2xl font-extrabold text-ink-950" />
+                        {preview.data.original_tiyin !== preview.data.total_tiyin && <Money tiyin={preview.data.original_tiyin} strike className="mr-2 text-sm" />}
+                        <Money tiyin={preview.data.total_tiyin} className="text-2xl font-extrabold text-ink-950" />
                       </span>
                     </div>
                   </>
                 ) : (
                   <div className="flex items-end justify-between border-t border-ink-100 pt-3">
                     <span className="font-semibold text-ink-700">Jami</span>
-                    {step === 3 && preview.isLoading ? <Skeleton className="h-7 w-28" /> : <Money value={subtotal} className="text-2xl font-extrabold text-ink-950" />}
+                    {step === 3 && preview.isLoading ? <Skeleton className="h-7 w-28" /> : <Money tiyin={subtotal} className="text-2xl font-extrabold text-ink-950" />}
                   </div>
                 )}
                 {duration > 0 && <div className="text-xs text-ink-400">Davomiyligi: {minutes(duration)}</div>}

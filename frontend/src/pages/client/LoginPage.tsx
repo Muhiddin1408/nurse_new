@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Building2, KeyRound, ShieldCheck, Smartphone, Stethoscope, User as UserIcon, UserRound } from 'lucide-react'
+import { ArrowLeft, Building2, KeyRound, Smartphone, Stethoscope, User as UserIcon, UserRound } from 'lucide-react'
 import { api, ApiError, asList } from '@/lib/api'
 import { ROLE_HOME, ROLE_LABEL, useAuth } from '@/lib/auth'
 import { phone as fmtPhone } from '@/lib/format'
@@ -12,12 +12,11 @@ import { Button, Field, Input, Segmented, cx } from '@/components/ui'
 
 type Step = 'phone' | 'code' | 'profile' | 'role'
 
-const ROLE_ICON: Record<Role, typeof UserIcon> = { client: UserIcon, doctor: Stethoscope, clinic_admin: Building2, platform_admin: ShieldCheck }
+const ROLE_ICON: Record<Role, typeof UserIcon> = { client: UserIcon, doctor: Stethoscope, clinic_admin: Building2 }
 const ROLE_TEXT: Record<Role, string> = {
   client: 'Shifokorga yozilish va bronlarni boshqarish',
   doctor: 'Qabullar, jadval va daromad',
   clinic_admin: 'Klinika jadvali, shifokorlar va hisobotlar',
-  platform_admin: 'Shifokorlar moderatsiyasi va nizolar',
 }
 
 /** "90 123 45 67" → "+998901234567" */
@@ -96,7 +95,7 @@ export default function LoginPage() {
       const res = await verifyOtp(toE164(digits), c)
       setAuthed(res.user)
       if (res.user.active_role === 'client') {
-        const patients = asList<Patient>(await api('/patient/patients/').catch(() => []))
+        const patients = asList<Patient>(await api('/users/me/patients').catch(() => []))
         if (res.is_new_user || patients.length === 0) return setStep('profile')
         if (!res.user.full_name) updateUser({ full_name: (patients.find((p) => /o.?zim/i.test(p.relation)) ?? patients[0]).full_name })
       }
@@ -322,7 +321,9 @@ function ProfileStep({ onDone }: { onDone: (name: string) => void }) {
     if (Object.keys(errs).length) return
     setBusy(true)
     try {
-      await api('/patient/patients/', { method: 'POST', body: { full_name: name.trim(), birth_date: birth, gender, relation: "O'zim" } })
+      // Ism — akkauntda (user-service), "O'zim" bemori — bron uchun
+      await api('/users/me', { method: 'PATCH', body: { full_name: name.trim() } })
+      await api('/users/me/patients', { method: 'POST', body: { full_name: name.trim(), birth_date: birth, gender, relation: "O'zim" } })
       onDone(name.trim())
     } catch (err) {
       const ae = err as ApiError

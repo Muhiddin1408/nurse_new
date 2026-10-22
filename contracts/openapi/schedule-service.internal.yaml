@@ -1,0 +1,108 @@
+openapi: 3.1.0
+info:
+  title: schedule-service — internal API
+  version: 1.0.0
+  description: |
+    Faqat booking-service chaqiradi (`X-Internal-Token` + `X-Caller: booking-service`).
+    Slot holati: free → held → booked; blocked (sabab: manual | time_off | clinic_closed | travel_buffer | affiliation_paused | rule_changed).
+    Muddati o'tgan hold (`hold_expires_at < now`) — har o'qish va CAS'da FREE hisoblanadi (lazy expiry).
+    Asosiy bo'shatish yo'li — eventlar (`booking.cancelled|expired|rescheduled`); `release` — saga kompensatsiyasi.
+servers: [{url: "http://schedule-service:8080"}]
+security: [{internal: []}]
+components:
+  securitySchemes:
+    internal: {type: apiKey, in: header, name: X-Internal-Token}
+  schemas:
+    Slot:
+      type: object
+      required: [id, doctor_id, clinic_id, room_id, place, start_at, end_at, status, hold_ref, hold_expires_at,
+                 price_adjust_percent, duration_minutes]
+      properties:
+        id: {type: string, format: uuid}
+        doctor_id: {type: string, format: uuid}
+        clinic_id: {type: [string, "null"], format: uuid}
+        room_id: {type: [string, "null"], format: uuid}
+        place: {type: string, enum: [clinic, home]}
+        start_at: {type: string, format: date-time}
+        end_at: {type: string, format: date-time}
+        duration_minutes: {type: integer}
+        status: {type: string, enum: [free, held, booked, blocked], description: "muddati o'tgan hold — free"}
+        hold_ref: {type: [string, "null"]}
+        hold_expires_at: {type: [string, "null"], format: date-time}
+        price_adjust_percent:
+          type: integer
+          minimum: -90
+          maximum: 100
+          description: "C12: shifokorning PriceRule'lari slot boshlanishi (Asia/Tashkent) bo'yicha"
+    HoldRequest:
+      type: object
+      required: [hold_ref, doctor_id]
+      properties:
+        hold_ref: {type: string, maxLength: 64, description: "booking_id"}
+        doctor_id: {type: string, format: uuid, description: "A2: slot shu shifokorniki bo'lishi shart (aks holda 409 SLOT_TAKEN — farqi oshkor qilinmaydi)"}
+        ttl_seconds: {type: integer, minimum: 60, maximum: 3600, description: "bo'lmasa — admin `schedule.hold_ttl_minutes`"}
+        travel_buffer_minutes: {type: integer, minimum: 0, maximum: 90, description: "uy chaqiruvi: qo'shni FREE slotlar `travel_buffer` bilan bloklanadi"}
+paths:
+  /internal/v1/slots/{slot_id}:
+    get:
+      parameters: [{name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Slot"}}}}
+        "404": {description: SLOT_NOT_FOUND}
+  /internal/v1/slots/{slot_id}/hold:
+    post:
+      summary: FREE (yoki muddati o'tgan HELD) → HELD, compare-and-set. O'sha hold_ref bilan qayta — idempotent (muddat yangilanadi).
+      parameters:
+        - {name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: Idempotency-Key, in: header, schema: {type: string}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/HoldRequest"}}}}
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Slot"}}}}
+        "409": {description: SLOT_TAKEN}
+  /internal/v1/slots/{slot_id}/confirm:
+    post:
+      summary: HELD (shu hold_ref) → BOOKED. Allaqachon BOOKED shu hold_ref bilan — idempotent 200.
+      parameters: [{name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [hold_ref], properties: {hold_ref: {type: string}}}}}
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Slot"}}}}
+        "409": {description: "HOLD_LOST — slot boshqa hold_ref bilan yoki bo'shab qolgan (muddat o'tgan)"}
+  /internal/v1/slots/{slot_id}/extend:
+    post:
+      summary: To'lov ochilganda hold muddatini uzaytirish (faqat uzaytiradi, qisqartirmaydi)
+      parameters: [{name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [hold_ref, minutes], properties: {hold_ref: {type: string}, minutes: {type: integer, minimum: 1, maximum: 60}}}
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Slot"}}}}
+        "409": {description: HOLD_LOST}
+  /internal/v1/slots/{slot_id}/release:
+    post:
+      summary: Saga kompensatsiyasi — shu hold_ref ning HELD/BOOKED slotini FREE qiladi (uy chaqiruvi buferi bilan). Idempotent.
+      parameters: [{name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [hold_ref], properties: {hold_ref: {type: string}}}}}
+      responses:
+        "204": {description: bo'shatildi yoki allaqachon bo'sh / boshqa hold_ref (o'zgarishsiz)}
+  /internal/v1/doctors/{doctor_id}/free-slots:
+    get:
+      summary: Bo'sh slotlar (409 SLOT_TAKEN dagi muqobillar, "yana bron qilish")
+      parameters:
+        - {name: doctor_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: place, in: query, schema: {type: string, enum: [clinic, home]}}
+        - {name: clinic_id, in: query, schema: {type: string, format: uuid}}
+        - {name: min_minutes, in: query, schema: {type: integer}}
+        - {name: limit, in: query, schema: {type: integer, maximum: 50, default: 5}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: "#/components/schemas/Slot"}}}}

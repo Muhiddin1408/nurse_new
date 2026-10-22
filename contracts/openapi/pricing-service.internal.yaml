@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: pricing-service — internal API
+  version: 1.0.0
+  description: |
+    Faqat booking-service chaqiradi. Pul — tiyin, yaxlitlash ROUND_HALF_UP, faqat shu servisda (ARCHITECTURE 9).
+    Hisob tartibi (monolit C12): xizmat narxi → slot foizi (`price_adjust_percent`, har xizmatga) → BITTA eng katta
+    chegirma (promo | first_booking | follow_up | package; qo'shilmaydi) → komissiya taqsimoti → to'lov rejimi.
+    Quote 10 daqiqa Redis'da; booking `commit` bilan promo/paket band qiladi (`reserved`), `booking.created`
+    kelsa — faol, 15 daqiqada kelmasa — o'zi bo'shaydi; `booking.cancelled|expired` — bo'shaydi.
+servers: [{url: "http://pricing-service:8080"}]
+security: [{internal: []}]
+components:
+  securitySchemes:
+    internal: {type: apiKey, in: header, name: X-Internal-Token}
+  schemas:
+    QuoteRequest:
+      type: object
+      required: [client_id, doctor_id, service_ids, slot_start_at, price_adjust_percent, place]
+      properties:
+        client_id: {type: string, format: uuid}
+        doctor_id: {type: string, format: uuid}
+        service_ids: {type: array, minItems: 1, maxItems: 10, items: {type: string, format: uuid}}
+        slot_start_at: {type: string, format: date-time}
+        price_adjust_percent: {type: integer, minimum: -90, maximum: 100}
+        place: {type: string, enum: [clinic, home]}
+        promo_code: {type: string, maxLength: 32, default: ""}
+    QuoteItem:
+      type: object
+      required: [service_id, service_name, base_price_tiyin, price_tiyin, duration_minutes, mxik_code, package_code, vat_percent]
+      properties:
+        service_id: {type: string, format: uuid}
+        service_name: {type: string}
+        base_price_tiyin: {type: integer}
+        price_tiyin: {type: integer, description: "slot foizi qo'llangan (chegirmasiz)"}
+        duration_minutes: {type: integer}
+        mxik_code: {type: string}
+        package_code: {type: string}
+        vat_percent: {type: integer}
+    MoneySplit:
+      description: "contracts/events — `money_split` bilan bir xil; total = platform_fee + provider_fee + doctor_payout"
+      type: object
+      required: [total_tiyin, platform_fee_tiyin, provider_fee_tiyin, doctor_payout_tiyin, discount_tiyin, discount_borne_by]
+      properties:
+        total_tiyin: {type: integer}
+        platform_fee_tiyin: {type: integer, description: "platforma ko'targan chegirmada manfiy bo'lishi mumkin"}
+        provider_fee_tiyin: {type: integer}
+        doctor_payout_tiyin: {type: integer}
+        discount_tiyin: {type: integer}
+        discount_borne_by: {type: string, enum: ["", platform, doctor]}
+    Quote:
+      type: object
+      required: [quote_id, expires_at, items, original_tiyin, discount_kind, discount_tiyin, promo_code, total_tiyin,
+                 money, payment_mode, prepay_tiyin, commission_bp, provider_fee_bp, price_adjust_percent]
+      properties:
+        quote_id: {type: string, format: uuid}
+        expires_at: {type: string, format: date-time}
+        items: {type: array, items: {$ref: "#/components/schemas/QuoteItem"}}
+        original_tiyin: {type: integer}
+        price_adjust_percent: {type: integer}
+        discount_kind: {type: string, enum: ["", promo, first_booking, follow_up, package]}
+        discount_tiyin: {type: integer}
+        promo_code: {type: string}
+        total_tiyin: {type: integer}
+        money: {$ref: "#/components/schemas/MoneySplit"}
+        payment_mode: {type: string, enum: [prepaid, deposit, at_clinic]}
+        prepay_tiyin: {type: integer}
+        commission_bp: {type: integer}
+        provider_fee_bp: {type: integer}
+paths:
+  /internal/v1/quotes:
+    post:
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/QuoteRequest"}}}}
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Quote"}}}}
+        "422":
+          description: |
+            SERVICES_UNAVAILABLE (xizmat topilmadi/faol emas/shifokorniki emas), PROMO_INVALID (`detail.reason`:
+            not_found | expired | not_for_doctor | min_amount | limit_reached | already_used | first_booking_only)
+  /internal/v1/quotes/{quote_id}/commit:
+    post:
+      summary: Quote'ni bronga bog'laydi — promo/paket band qilinadi (`reserved`). booking_id bo'yicha idempotent.
+      parameters:
+        - {name: quote_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: Idempotency-Key, in: header, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [booking_id, client_id], properties: {booking_id: {type: string, format: uuid}, client_id: {type: string, format: uuid}}}
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Quote"}}}}
+        "404": {description: QUOTE_EXPIRED}
+        "409": {description: "PROMO_LIMIT_REACHED / PACKAGE_EXHAUSTED — oraliqda boshqa bron oldi; booking yangi quote so'raydi"}

@@ -1,0 +1,35 @@
+# Servis pipeline'i — scripts/new-service.sh buni .github/workflows/svc-dispute-service.yml ga ko'chiradi.
+# Mantiq qayta ishlatiladigan workflow'larda (.github/workflows/_service-*.yml) — servislar orasida
+# farqlanib ketmaydi (Trasso #7 ning CI ko'rinishi).
+name: svc-dispute-service
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - backend/dispute-service/**
+      - libs/py-common/**
+      - contracts/**
+      - .github/workflows/svc-dispute-service.yml
+      - .github/workflows/_service-python.yml
+      - .github/workflows/_build-deploy.yml
+  pull_request:
+    paths:
+      - backend/dispute-service/**
+      - libs/py-common/**
+      - contracts/**
+
+concurrency:
+  group: svc-dispute-service-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  pipeline:
+    uses: ./.github/workflows/_service-python.yml
+    with:
+      service: dispute-service
+    secrets: inherit

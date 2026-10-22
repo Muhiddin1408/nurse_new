@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/service.deactivated.v1.json",
+  "title": "service.deactivated",
+  "description": "Xizmat o'chirildi — yangi bronlarda tanlanmaydi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "service.deactivated"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "service"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service_id",
+        "doctor_id",
+        "clinic_id"
+      ],
+      "properties": {
+        "service_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "clinic_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

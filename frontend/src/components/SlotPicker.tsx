@@ -7,8 +7,11 @@ import type { Slot } from '@/lib/types'
 import { Skeleton, cx } from './ui'
 
 export type Place = 'clinic' | 'home'
+/** schedule-service `PublicSlot`: joy turi va vaqt bo'yicha narx foizi (pricing quote'iga uzatiladi) */
 export interface PlacedSlot extends Slot {
   clinic_id?: string | null
+  place?: Place
+  price_adjust_percent?: number
 }
 
 const DAYS = 21

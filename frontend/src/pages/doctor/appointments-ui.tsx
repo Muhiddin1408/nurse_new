@@ -1,16 +1,17 @@
 import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Ban, CheckCircle2, Clock, History, Home, MapPin, MessageSquare, Phone, Play, UserX } from 'lucide-react'
+import { Ban, CheckCircle2, Clock, History, Home, MapPin, MessageSquare, Play, UserX } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useToast } from '@/lib/toast'
-import { dateLong, minutes, phone, relativeDateTime, time } from '@/lib/format'
+import { ageFrom, dateLong, minutes, relativeDateTime, time } from '@/lib/format'
 import { Avatar, Badge, Button, ConfirmDialog, ErrorState, Field, Modal, Skeleton, StatusBadge, Textarea, cx } from '@/components/ui'
-import { APPT_STATUS, type Appointment } from './shared'
+import { APPT_STATUS, useClinicName, type Appointment } from './shared'
 
 const GENDER: Record<string, string> = { male: 'Erkak', female: 'Ayol' }
 
 export function patientLine(a: Appointment) {
-  const parts = [a.patient.age !== null && a.patient.age !== undefined ? `${a.patient.age} yosh` : null, GENDER[a.patient.gender], a.patient.weight_kg ? `${a.patient.weight_kg} kg` : null]
+  const p = a.patient
+  const parts = [p.birth_date ? `${ageFrom(p.birth_date)} yosh` : null, p.gender ? GENDER[p.gender] : null, p.weight_kg ? `${p.weight_kg} kg` : null]
   return parts.filter(Boolean).join(' · ')
 }
 
@@ -70,13 +71,6 @@ export function AppointmentActions({ a, compact }: { a: Appointment; compact?: b
             Yakunlash
           </Button>
         )}
-        {a.client_phone && (
-          <a href={`tel:${a.client_phone}`}>
-            <Button size="sm" variant="secondary" icon={<Phone className="h-4 w-4" />}>
-              {compact ? '' : "Qo'ng'iroq"}
-            </Button>
-          </a>
-        )}
         <Button size="sm" variant="outline" icon={<UserX className="h-4 w-4" />} disabled={busy} onClick={() => setDialog('no-show')}>
           Kelmadi
         </Button>
@@ -118,6 +112,7 @@ export function AppointmentDetailModal({ id, onClose }: { id: string | null; onC
     queryFn: () => api<Appointment>(`/doctor/appointments/${id}`),
     enabled: !!id,
   })
+  const clinicName = useClinicName()
   const a = q.data
   return (
     <Modal open={!!id} onClose={onClose} title={a ? `Qabul #${a.number}` : 'Qabul'} size="lg">
@@ -144,14 +139,9 @@ export function AppointmentDetailModal({ id, onClose }: { id: string | null; onC
             <Info
               icon={a.place === 'home' ? <Home className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
               label={a.place === 'home' ? 'Uyga chaqiruv' : 'Klinika'}
-              value={a.place === 'home' ? addressLine(a) || 'Manzil qabul kuni ochiladi' : a.clinic?.name || '—'}
+              value={a.place === 'home' ? addressLine(a) || 'Manzil qabul kuni ochiladi' : clinicName(a.clinic_id) || '—'}
             />
-            <Info
-              icon={<Phone className="h-4 w-4" />}
-              label="Telefon"
-              value={a.client_phone ? <a className="text-brand-700 hover:underline" href={`tel:${a.client_phone}`}>{phone(a.client_phone)}</a> : a.contact_available_from ? `${dateLong(a.contact_available_from)} kuni ochiladi` : '—'}
-            />
-            <Info icon={<CheckCircle2 className="h-4 w-4" />} label="Xizmatlar" value={a.services.map((s) => `${s.name} (${minutes(s.duration_minutes)})`).join(', ')} />
+            <Info icon={<CheckCircle2 className="h-4 w-4" />} label="Xizmatlar" value={a.services.map((s) => `${s.service_name} (${minutes(s.duration_minutes)})`).join(', ')} />
           </div>
 
           {a.client_comment && (
@@ -213,13 +203,14 @@ function Info({ icon, label, value }: { icon: ReactNode; label: string; value: R
 }
 
 export function PlaceBadge({ a }: { a: Appointment }) {
+  const clinicName = useClinicName()
   return a.place === 'home' ? (
     <Badge tone="violet">
       <Home className="h-3 w-3" /> Uyda
     </Badge>
   ) : (
     <Badge tone="blue">
-      <MapPin className="h-3 w-3" /> {a.clinic?.name ?? 'Klinika'}
+      <MapPin className="h-3 w-3" /> {clinicName(a.clinic_id) ?? 'Klinika'}
     </Badge>
   )
 }

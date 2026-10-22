@@ -1,0 +1,46 @@
+# Kong gateway (DB-less). Host portlari: 8000 (proxy), 8100 (admin API, faqat 127.0.0.1) —
+# docs/SERVICE_REGISTRY.md 3-bo'lim. Avval backend/infra ko'tarilgan bo'lishi kerak (medbron-net).
+name: medbron-gateway
+
+networks:
+  medbron-net:
+    external: true
+
+services:
+  kong:
+    image: kong:3.9.1
+    container_name: medbron-kong
+    init: true
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: ${KONG_ADMIN_LISTEN:-0.0.0.0:8001}   # prod: "off"
+      KONG_REDIS_PASSWORD: ${KONG_REDIS_PASSWORD:-}           # prod: rate-limit Redis (env vault)
+      KONG_STATUS_LISTEN: 0.0.0.0:8100
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      # Mijoz IP'si (rate-limit, X-Real-IP) faqat ISHONCHLI proksidan kelgan X-Forwarded-For'dan olinadi.
+      # 0.0.0.0/0 qo'yilsa har kim soxta XFF bilan IP limitini chetlab o'tadi. Prod: LB/CDN CIDR'i.
+      KONG_REAL_IP_HEADER: X-Forwarded-For
+      KONG_TRUSTED_IPS: ${KONG_TRUSTED_IPS:-127.0.0.1/32}
+      KONG_HEADERS: "off"           # Kong versiyasini oshkor qilmaslik
+      # Servis konteyneri qayta yaratilsa (deploy) yangi IP darhol olinsin — Docker DNS TTL 600 s keshlanmasin
+      KONG_DNS_VALID_TTL: "5"
+      KONG_DNS_STALE_TTL: "0"
+    volumes:
+      - ./kong.${KONG_ENV:-dev}.yml:/kong/kong.yml:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - "8000:8000"
+      - "127.0.0.1:8100:8001"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks: [medbron-net]

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/clinic.published.v1.json",
+  "title": "clinic.published",
+  "description": "Klinika ommaviy katalogda ko'rina boshladi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "clinic.published"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "clinic"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clinic_id",
+        "name",
+        "city",
+        "street",
+        "latitude",
+        "longitude",
+        "working_hours"
+      ],
+      "properties": {
+        "clinic_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "city": {
+          "type": "string"
+        },
+        "street": {
+          "type": "string"
+        },
+        "latitude": {
+          "type": "number"
+        },
+        "longitude": {
+          "type": "number"
+        },
+        "working_hours": {
+          "type": [
+            "object",
+            "array"
+          ]
+        }
+      }
+    }
+  }
+}

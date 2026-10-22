@@ -2,7 +2,23 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/__SERVICE_NAME__.iml" filepath="$PROJECT_DIR$/.idea/__SERVICE_NAME__.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/admin-service.iml" filepath="$PROJECT_DIR$/.idea/admin-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/analytics-service.iml" filepath="$PROJECT_DIR$/.idea/analytics-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/auth-service.iml" filepath="$PROJECT_DIR$/.idea/auth-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/billing-service.iml" filepath="$PROJECT_DIR$/.idea/billing-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/booking-service.iml" filepath="$PROJECT_DIR$/.idea/booking-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/catalog-service.iml" filepath="$PROJECT_DIR$/.idea/catalog-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/dispute-service.iml" filepath="$PROJECT_DIR$/.idea/dispute-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/file-service.iml" filepath="$PROJECT_DIR$/.idea/file-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/medbron-common.iml" filepath="$PROJECT_DIR$/.idea/medbron-common.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/notification-service.iml" filepath="$PROJECT_DIR$/.idea/notification-service.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/nurse_new.iml" filepath="$PROJECT_DIR$/.idea/nurse_new.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/payment-service.iml" filepath="$PROJECT_DIR$/.idea/payment-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/pricing-service.iml" filepath="$PROJECT_DIR$/.idea/pricing-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/review-service.iml" filepath="$PROJECT_DIR$/.idea/review-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/search-service.iml" filepath="$PROJECT_DIR$/.idea/search-service.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/user-service.iml" filepath="$PROJECT_DIR$/.idea/user-service.iml" />
     </modules>
   </component>
 </project>

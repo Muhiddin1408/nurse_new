@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/booking.expired.v1.json",
+  "title": "booking.expired",
+  "description": "To'lov muddatida kelmadi — bron yopildi, slot bo'shatiladi. Bekor qilishdan alohida (cancellation_rate'ni buzmaslik uchun).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "booking.expired"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "booking"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "booking_id",
+        "number",
+        "client_id",
+        "patient_id",
+        "doctor_id",
+        "clinic_id",
+        "slot_id",
+        "place",
+        "start_at",
+        "end_at",
+        "payment_due_at"
+      ],
+      "properties": {
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "number": {
+          "type": "string"
+        },
+        "client_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "patient_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "clinic_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "slot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "place": {
+          "type": "string",
+          "enum": [
+            "clinic",
+            "home"
+          ]
+        },
+        "start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payment_due_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

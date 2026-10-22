@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/doctor.onboarding_submitted.v1.json",
+  "title": "doctor.onboarding_submitted",
+  "description": "Shifokor anketasi va hujjatlari moderatsiyaga yuborildi (SLA 48 soat).",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "doctor.onboarding_submitted"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "doctor"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor_id",
+        "user_id",
+        "submitted_at",
+        "moderation_due_at"
+      ],
+      "properties": {
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "submitted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "moderation_due_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

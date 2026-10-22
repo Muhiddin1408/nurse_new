@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/audit.recorded.v1.json",
+  "title": "audit.recorded",
+  "description": "Imtiyozli amal (moderatsiya, refund, narx o'zgarishi...) — admin-service audit jurnaliga yoziladi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "audit.recorded"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "audit"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_id",
+        "actor_type",
+        "actor_role",
+        "action",
+        "object_type",
+        "object_id",
+        "before",
+        "after",
+        "ip",
+        "request_id"
+      ],
+      "properties": {
+        "actor_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "admin",
+            "system"
+          ]
+        },
+        "actor_role": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "object_type": {
+          "type": "string"
+        },
+        "object_id": {
+          "type": "string"
+        },
+        "before": {
+          "type": [
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "after": {
+          "type": [
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "ip": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "request_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

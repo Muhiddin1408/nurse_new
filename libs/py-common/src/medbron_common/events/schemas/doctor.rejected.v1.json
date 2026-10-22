@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/doctor.rejected.v1.json",
+  "title": "doctor.rejected",
+  "description": "Moderatsiyada rad etildi (sabab bilan), shifokor tuzatib qayta yuborishi mumkin.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "doctor.rejected"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "doctor"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor_id",
+        "user_id",
+        "reason",
+        "rejected_by"
+      ],
+      "properties": {
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "rejected_by": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    }
+  }
+}

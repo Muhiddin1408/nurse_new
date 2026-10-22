@@ -11,21 +11,10 @@ import { useAuth } from '@/lib/auth'
 import { addDaysISO, dateLong, minutes, money, todayISO } from '@/lib/format'
 import { useDoctor, useDoctorServices } from '@/lib/queries'
 import { useToast } from '@/lib/toast'
-import type { PackageOffer } from '@/lib/types'
+import type { PackageOffer, Review } from '@/lib/types'
 import { FavoriteButton } from '@/components/client'
 import { SlotPicker, slotDay, useFirstFreeDay, type Place, type PlacedSlot } from '@/components/SlotPicker'
 import { Avatar, Badge, Button, EmptyState, ErrorState, Modal, Money, RatingPill, Segmented, Skeleton, Stars, cx } from '@/components/ui'
-
-interface Review {
-  id: string
-  rating: number
-  comment: string
-  author: string | null
-  is_anonymous: boolean
-  created_at: string
-  doctor_reply: string | null
-  doctor_replied_at: string | null
-}
 
 export default function DoctorPage() {
   const { id } = useParams()
@@ -48,7 +37,7 @@ export default function DoctorPage() {
 
   const clinicNames = useMemo(() => Object.fromEntries((doctor.data?.clinics ?? []).map((c) => [c.id, c.name])), [doctor.data])
   const placeServices = services.data?.filter((s) => s.place === place) ?? []
-  const minPrice = placeServices.length ? placeServices.reduce((m, s) => (Number(s.price) < Number(m) ? s.price : m), placeServices[0].price) : null
+  const minPrice = placeServices.length ? Math.min(...placeServices.map((s) => s.price_tiyin)) : null
 
   const book = (slot?: PlacedSlot) => {
     const p = new URLSearchParams({ place })
@@ -99,7 +88,7 @@ export default function DoctorPage() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h1 className="text-3xl font-extrabold text-ink-950 sm:text-4xl">{d.full_name}</h1>
-                    <p className="mt-1 text-lg font-semibold text-brand-700">{d.specializations.join(' · ')}</p>
+                    <p className="mt-1 text-lg font-semibold text-brand-700">{d.specializations.map((s) => s.name).join(' · ')}</p>
                   </div>
                   <FavoriteButton doctorId={d.id} className="shrink-0" />
                 </div>
@@ -156,7 +145,7 @@ export default function DoctorPage() {
                       </div>
                     </div>
                     <div className="text-right font-bold text-ink-900">
-                      <Money value={s.price} />
+                      <Money tiyin={s.price_tiyin} />
                     </div>
                   </div>
                 ))}
@@ -199,7 +188,7 @@ export default function DoctorPage() {
           <div className="card overflow-hidden">
             <div className="bg-gradient-to-br from-ink-900 to-ink-800 p-5 text-white">
               <div className="text-sm text-white/60">Qabul narxi</div>
-              <div className="mt-1 text-2xl font-extrabold">{minPrice ? `${money(minPrice)} dan` : '—'}</div>
+              <div className="mt-1 text-2xl font-extrabold">{minPrice != null ? `${money(minPrice)} dan` : '—'}</div>
               {hasHome && hasClinic && (
                 <div className="mt-4">
                   <PlaceSwitch place={place} onChange={setPlace} dark />
@@ -226,7 +215,7 @@ export default function DoctorPage() {
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <div className="text-xs text-ink-500">Narxi</div>
-            <div className="font-extrabold text-ink-900">{minPrice ? `${money(minPrice)} dan` : '—'}</div>
+            <div className="font-extrabold text-ink-900">{minPrice != null ? `${money(minPrice)} dan` : '—'}</div>
           </div>
           <Button size="lg" onClick={() => book()}>
             Qabulga yozilish
@@ -282,7 +271,7 @@ function WaitlistButton({ doctorId, place }: { doctorId: string; place: Place })
   const nav = useNavigate()
   const toast = useToast()
   const m = useMutation({
-    mutationFn: () => api('/booking/waitlist', { method: 'POST', body: { doctor_id: doctorId, date_from: todayISO(), date_to: addDaysISO(todayISO(), 13), place } }),
+    mutationFn: () => api('/waitlist', { method: 'POST', body: { doctor_id: doctorId, date_from: todayISO(), date_to: addDaysISO(todayISO(), 13), place } }),
     onSuccess: () => toast.success("Navbatga yozildingiz — joy bo'shashi bilan xabar beramiz"),
     onError: (e) => toast.error(e),
   })
@@ -307,10 +296,14 @@ function Packages({ doctorId }: { doctorId: string }) {
   const nav = useNavigate()
   const toast = useToast()
   const [chosen, setChosen] = useState<PackageOffer | null>(null)
-  // Endpoint JWT talab qiladi — paketlar faqat kirgan mijozga ko'rsatiladi
-  const q = useQuery({ queryKey: ['packages', doctorId], queryFn: () => api<PackageOffer[]>(`/booking/doctors/${doctorId}/packages`), enabled: isAuthed })
+  // Endpoint JWT talab qiladi — paketlar faqat kirgan mijozga ko'rsatiladi (pricing-service)
+  const q = useQuery({
+    queryKey: ['packages', doctorId],
+    queryFn: () => api<PackageOffer[]>('/pricing/packages', { query: { doctor_id: doctorId } }),
+    enabled: isAuthed,
+  })
   const enroll = useMutation({
-    mutationFn: (id: string) => api(`/booking/packages/${id}/enroll`, { method: 'POST' }),
+    mutationFn: (id: string) => api(`/pricing/packages/${id}/enroll`, { method: 'POST' }),
     onSuccess: () => {
       toast.success("Paket faollashtirildi! Keyingi bronlarda chegirma avtomatik qo'llanadi")
       setChosen(null)
@@ -329,7 +322,7 @@ function Packages({ doctorId }: { doctorId: string }) {
               {p.sessions} seans · {p.validity_days} kun amal qiladi
             </div>
             <div className="mt-3 text-sm">
-              Tejaysiz: <b className="text-violet-700">{money(p.total_saving)}</b>
+              Tejaysiz: <b className="text-violet-700">{money(p.total_saving_tiyin)}</b>
             </div>
             <Button size="sm" variant="dark" className="mt-4" onClick={() => (isAuthed ? setChosen(p) : nav('/login'))}>
               Paketni olish
@@ -359,7 +352,7 @@ function Packages({ doctorId }: { doctorId: string }) {
               <b className="text-ink-900">{chosen.name}</b> — {chosen.sessions} ta seans, har birida {chosen.discount_percent}% chegirma.
             </p>
             <p>
-              Bitta seans narxi: <Money value={chosen.unit_price} className="font-semibold text-ink-900" />. Jami tejash: <b className="text-violet-700">{money(chosen.total_saving)}</b>.
+              Bitta seans narxi: <Money tiyin={chosen.unit_price_tiyin} className="font-semibold text-ink-900" />. Jami tejash: <b className="text-violet-700">{money(chosen.total_saving_tiyin)}</b>.
             </p>
             <p className="text-sm text-ink-500">To'lov har bir bron vaqtida amalga oshiriladi.</p>
           </div>
@@ -373,7 +366,7 @@ function Reviews({ doctorId, rating, count }: { doctorId: string; rating: number
   const q = useInfiniteQuery({
     queryKey: ['reviews', doctorId],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => api<Review[]>(`/catalog/doctors/${doctorId}/reviews`, { auth: false, query: { limit: 5, offset: pageParam } }),
+    queryFn: ({ pageParam }) => api<Review[]>('/reviews', { auth: false, query: { doctor_id: doctorId, limit: 5, offset: pageParam } }),
     getNextPageParam: (last, all) => (last.length < 5 ? undefined : all.length * 5),
   })
   const items = q.data?.pages.flat() ?? []

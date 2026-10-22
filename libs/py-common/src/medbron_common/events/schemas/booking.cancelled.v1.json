@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/booking.cancelled.v1.json",
+  "title": "booking.cancelled",
+  "description": "Bron bekor qilindi. `refund_tiyin` — bekor qilish siyosati natijasi; payment-service shu summani qaytaradi. Slotni schedule-service bo'shatadi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "booking.cancelled"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "booking"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "booking_id",
+        "number",
+        "client_id",
+        "patient_id",
+        "doctor_id",
+        "clinic_id",
+        "slot_id",
+        "place",
+        "start_at",
+        "end_at",
+        "cancelled_by",
+        "reason_code",
+        "reason_text",
+        "paid_tiyin",
+        "refund_tiyin",
+        "penalty_tiyin",
+        "previous_status",
+        "money"
+      ],
+      "properties": {
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "number": {
+          "type": "string"
+        },
+        "client_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "patient_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "clinic_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "slot_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "place": {
+          "type": "string",
+          "enum": [
+            "clinic",
+            "home"
+          ]
+        },
+        "start_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "cancelled_by": {
+          "type": "string",
+          "enum": [
+            "client",
+            "doctor",
+            "clinic_admin",
+            "admin",
+            "system"
+          ]
+        },
+        "reason_code": {
+          "type": "string"
+        },
+        "reason_text": {
+          "type": "string"
+        },
+        "paid_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "refund_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "penalty_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "previous_status": {
+          "type": "string",
+          "enum": [
+            "pending_payment",
+            "confirmed"
+          ]
+        },
+        "money": {
+          "$ref": "#/$defs/money_split"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "money_split": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Bron yaratilganda pricing-service hisoblagan moliyaviy snapshot (tiyinda).",
+      "required": [
+        "total_tiyin",
+        "platform_fee_tiyin",
+        "provider_fee_tiyin",
+        "doctor_payout_tiyin",
+        "discount_tiyin",
+        "discount_borne_by"
+      ],
+      "properties": {
+        "total_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "platform_fee_tiyin": {
+          "type": "integer",
+          "description": "Chegirmani platforma ko'tarsa manfiy bo'lishi mumkin (marketing xarajati); invariant: total = platform_fee + provider_fee + doctor_payout"
+        },
+        "provider_fee_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "doctor_payout_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "discount_tiyin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "discount_borne_by": {
+          "type": "string",
+          "enum": [
+            "",
+            "platform",
+            "doctor"
+          ]
+        }
+      }
+    }
+  }
+}

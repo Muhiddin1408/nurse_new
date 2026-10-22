@@ -1,0 +1,146 @@
+# Umumiy infratuzilma: RabbitMQ (+ topologiya bootstrap), S3 obyekt ombori, Jaeger, Prometheus, Grafana.
+# Barcha servislar `medbron-net` tarmog'iga ulanadi (ularda `external: true`).
+#
+#   cd backend/infra && cp .env.example .env && $EDITOR .env
+#   docker compose up -d
+#
+# Host portlar — docs/SERVICE_REGISTRY.md 3-bo'lim. Faqat 127.0.0.1 ga bog'langan (dev).
+name: medbron-infra
+
+networks:
+  medbron-net:
+    name: medbron-net
+
+volumes:
+  rabbitmq-data:
+  s3-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.13.7-management
+    container_name: medbron-rabbitmq
+    hostname: medbron-rabbitmq
+    init: true
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER .env da majburiy}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD .env da majburiy}
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:?RABBITMQ_ERLANG_COOKIE .env da majburiy}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/90-medbron.conf:ro
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    # BLUEPRINT 8.1: `rabbitmq-diagnostics ping` EMAS — u Erlang tugunini ko'taradi va
+    # yuklangan brokerni bo'g'adi. Oddiy TCP tekshiruv yetarli.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "</dev/tcp/127.0.0.1/5672"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks: [medbron-net]
+
+  dlx-bootstrap:
+    build:
+      context: ../..
+      dockerfile: backend/infra/Dockerfile.bootstrap
+    container_name: medbron-dlx-bootstrap
+    restart: "no"
+    environment:
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@medbron-rabbitmq:5672/
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks: [medbron-net]
+
+  # S3-mos obyekt ombori (ADR-0010). Servislar FAQAT S3 API bilan ishlaydi — prod'da istalgan
+  # S3 (AWS, Yandex Object Storage, ...) bilan almashtiriladi. Bucketlar entrypoint'da yaratiladi.
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    container_name: medbron-s3
+    init: true
+    restart: unless-stopped
+    entrypoint: ["/medbron-s3.sh"]
+    environment:
+      S3_ADMIN_ACCESS_KEY: ${S3_ADMIN_ACCESS_KEY:?S3_ADMIN_ACCESS_KEY .env da majburiy}
+      S3_ADMIN_SECRET_KEY: ${S3_ADMIN_SECRET_KEY:?S3_ADMIN_SECRET_KEY .env da majburiy}
+      S3_FILE_SERVICE_ACCESS_KEY: ${S3_FILE_SERVICE_ACCESS_KEY:?S3_FILE_SERVICE_ACCESS_KEY .env da majburiy}
+      S3_FILE_SERVICE_SECRET_KEY: ${S3_FILE_SERVICE_SECRET_KEY:?S3_FILE_SERVICE_SECRET_KEY .env da majburiy}
+    volumes:
+      - s3-data:/data
+      - ./s3/entrypoint.sh:/medbron-s3.sh:ro
+    ports:
+      # Brauzer/ilova presigned URL bilan to'g'ridan-to'g'ri yuklaydi (prod'da — CDN/HTTPS domen ortida)
+      - "127.0.0.1:9000:8333"
+    healthcheck:
+      # /tmp/ready — bucketlar yaratilgandan keyin (entrypoint.sh)
+      test: ["CMD-SHELL", "test -f /tmp/ready && wget -q -O /dev/null http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks: [medbron-net]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: medbron-jaeger
+    init: true
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:16686:16686"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:14269/"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks: [medbron-net]
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: medbron-prometheus
+    init: true
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks: [medbron-net]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: medbron-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD .env da majburiy}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks: [medbron-net]

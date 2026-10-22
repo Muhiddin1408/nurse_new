@@ -1,0 +1,473 @@
+# MedBron event katalogi — YAGONA HAQIQAT MANBAI.
+# Har o'zgarish: (1) shu fayl, (2) JSON Schema, (3) libs/*/events konstantalari, (4) kod.
+# CI: scripts/check-contracts.py (publisher'siz consumer, katalogda yo'q publish, sxema mosligi).
+#
+# exchange: medbron.events (topic) | routing key = event_type | envelope: _envelope.v1.json
+# Pul maydonlari: *_tiyin (BIGINT, 1 so'm = 100 tiyin). Vaqt: RFC3339 UTC.
+
+# --- user --------------------------------------------------------
+user.registered:
+  version: 1
+  publisher: auth-service
+  consumers: [user-service, notification-service, analytics-service]
+  schema: user.registered.v1.json
+  aggregate: user
+  pii: [phone]
+  description: "Telefon OTP orqali birinchi marta tasdiqlandi — yangi foydalanuvchi."
+
+user.roles_changed:
+  version: 1
+  publisher: auth-service
+  consumers: [notification-service, analytics-service]
+  schema: user.roles_changed.v1.json
+  aggregate: user
+  description: "Foydalanuvchi rollari o'zgardi (doctor/clinic_admin qo'shildi yoki olindi)."
+
+user.deactivated:
+  version: 1
+  publisher: auth-service
+  consumers: [notification-service, analytics-service, ws-gateway]
+  schema: user.deactivated.v1.json
+  aggregate: user
+  description: "Akkaunt o'chirildi/bloklandi; barcha refresh tokenlar bekor qilindi."
+
+user.reactivated:
+  version: 1
+  publisher: auth-service
+  consumers: [notification-service, analytics-service]
+  schema: user.reactivated.v1.json
+  aggregate: user
+  description: "Admin bloklangan akkauntni qayta faollashtirdi — bildirishnoma kontakti yana faol."
+
+user.profile_updated:
+  version: 1
+  publisher: user-service
+  consumers: [notification-service, analytics-service]
+  schema: user.profile_updated.v1.json
+  aggregate: user
+  description: "Profil (ism, til) o'zgardi — bildirishnoma kontakt proyeksiyasi yangilanadi."
+
+user.deletion_requested:
+  version: 1
+  publisher: user-service
+  consumers: [auth-service, booking-service, notification-service, pricing-service, analytics-service]
+  schema: user.deletion_requested.v1.json
+  aggregate: user
+  description: "Foydalanuvchi akkauntini o'chirishni so'radi (faol bronlar yo'q). Shaxsiy ma'lumotlar anonimlashtiriladi."
+
+# --- admin -------------------------------------------------------
+admin.settings_changed:
+  version: 1
+  publisher: admin-service
+  consumers: [booking-service, pricing-service, payment-service, billing-service, review-service, dispute-service, schedule-service, analytics-service]
+  schema: admin.settings_changed.v1.json
+  aggregate: settings
+  description: "Global sozlamalar o'zgardi — consumerlar lokal keshini tashlaydi."
+
+# --- audit -------------------------------------------------------
+audit.recorded:
+  version: 1
+  publishers: [auth-service, user-service, catalog-service, schedule-service, pricing-service, booking-service, payment-service, billing-service, review-service, dispute-service, file-service, admin-service]
+  consumers: [admin-service]
+  schema: audit.recorded.v1.json
+  aggregate: audit
+  description: "Imtiyozli amal (moderatsiya, refund, narx o'zgarishi...) — admin-service audit jurnaliga yoziladi."
+
+# --- doctor ------------------------------------------------------
+doctor.onboarding_submitted:
+  version: 1
+  publisher: catalog-service
+  consumers: [notification-service, analytics-service]
+  schema: doctor.onboarding_submitted.v1.json
+  aggregate: doctor
+  description: "Shifokor anketasi va hujjatlari moderatsiyaga yuborildi (SLA 48 soat)."
+
+doctor.approved:
+  version: 1
+  publisher: catalog-service
+  consumers: [auth-service, schedule-service, search-service, notification-service, analytics-service]
+  schema: doctor.approved.v1.json
+  aggregate: doctor
+  description: "Moderatsiyadan o'tdi — bron qabul qila oladi; auth `doctor` rolini va `doctor_id` claim'ini qo'shadi."
+
+doctor.rejected:
+  version: 1
+  publisher: catalog-service
+  consumers: [notification-service, analytics-service]
+  schema: doctor.rejected.v1.json
+  aggregate: doctor
+  description: "Moderatsiyada rad etildi (sabab bilan), shifokor tuzatib qayta yuborishi mumkin."
+
+doctor.suspended:
+  version: 1
+  publisher: catalog-service
+  consumers: [auth-service, schedule-service, search-service, booking-service, notification-service, analytics-service]
+  schema: doctor.suspended.v1.json
+  aggregate: doctor
+  description: "Shifokor to'xtatildi: qidiruvdan yashiriladi, yangi bron qabul qilinmaydi, kelajakdagi bronlar bekor qilinadi (100% refund)."
+
+doctor.reinstated:
+  version: 1
+  publisher: catalog-service
+  consumers: [auth-service, schedule-service, search-service, notification-service, analytics-service]
+  schema: doctor.reinstated.v1.json
+  aggregate: doctor
+  description: "To'xtatilgan shifokor qayta faollashtirildi."
+
+doctor.profile_updated:
+  version: 1
+  publisher: catalog-service
+  consumers: [search-service, notification-service, analytics-service]
+  schema: doctor.profile_updated.v1.json
+  aggregate: doctor
+  description: "Ommaviy profil maydonlari o'zgardi (bio, tajriba, tillar, uy chaqiruvi sozlamalari). Telegram chat — notification-service egaligida."
+
+doctor.license_expiring:
+  version: 1
+  publisher: catalog-service
+  consumers: [notification-service, analytics-service]
+  schema: doctor.license_expiring.v1.json
+  aggregate: doctor
+  description: "Litsenziya muddati 30 kun ichida tugaydi (kunlik cron, bir marta)."
+
+# --- clinic ------------------------------------------------------
+clinic.published:
+  version: 1
+  publisher: catalog-service
+  consumers: [search-service, schedule-service, analytics-service]
+  schema: clinic.published.v1.json
+  aggregate: clinic
+  description: "Klinika ommaviy katalogda ko'rina boshladi."
+
+clinic.updated:
+  version: 1
+  publisher: catalog-service
+  consumers: [search-service, analytics-service]
+  schema: clinic.updated.v1.json
+  aggregate: clinic
+  description: "Klinika profili o'zgardi."
+
+clinic.suspended:
+  version: 1
+  publisher: catalog-service
+  consumers: [search-service, schedule-service, booking-service, analytics-service]
+  schema: clinic.suspended.v1.json
+  aggregate: clinic
+  description: "Klinika to'xtatildi: undagi kelajakdagi bronlar bekor qilinadi (100% refund)."
+
+clinic.member_added:
+  version: 1
+  publisher: catalog-service
+  consumers: [auth-service, notification-service, analytics-service]
+  schema: clinic.member_added.v1.json
+  aggregate: clinic
+  description: "Foydalanuvchi klinika admini qilib tayinlandi — auth `clinic_admin` rolini qo'shadi."
+
+clinic.member_removed:
+  version: 1
+  publisher: catalog-service
+  consumers: [auth-service, analytics-service]
+  schema: clinic.member_removed.v1.json
+  aggregate: clinic
+  description: "Klinika adminligi olindi; boshqa klinikada a'zolik qolmasa auth rolni olib tashlaydi."
+
+# --- affiliation -------------------------------------------------
+affiliation.invited:
+  version: 1
+  publisher: catalog-service
+  consumers: [notification-service, analytics-service]
+  schema: affiliation.invited.v1.json
+  aggregate: affiliation
+  description: "Klinika shifokorni taklif qildi."
+
+affiliation.accepted:
+  version: 1
+  publisher: catalog-service
+  consumers: [schedule-service, search-service, analytics-service]
+  schema: affiliation.accepted.v1.json
+  aggregate: affiliation
+  description: "Shifokor klinika taklifini qabul qildi — shu klinikada jadval tuza oladi."
+
+affiliation.paused:
+  version: 1
+  publisher: catalog-service
+  consumers: [schedule-service, search-service, analytics-service]
+  schema: affiliation.paused.v1.json
+  aggregate: affiliation
+  description: "Klinika hamkorlikni vaqtincha to'xtatdi (D7) — slotlar yopiladi, bronlar saqlanadi (ended'dan farqi)."
+
+affiliation.resumed:
+  version: 1
+  publisher: catalog-service
+  consumers: [schedule-service, search-service, analytics-service]
+  schema: affiliation.resumed.v1.json
+  aggregate: affiliation
+  description: "To'xtatilgan hamkorlik qayta faol — paused tufayli yopilgan slotlar ochiladi."
+
+affiliation.ended:
+  version: 1
+  publisher: catalog-service
+  consumers: [schedule-service, search-service, booking-service, notification-service, analytics-service]
+  schema: affiliation.ended.v1.json
+  aggregate: affiliation
+  description: "Shifokor–klinika aloqasi tugadi (rad etildi, to'xtatildi yoki shifokor chiqib ketdi). Klinikadagi bo'sh slotlar bloklanadi."
+
+# --- service -----------------------------------------------------
+service.created:
+  version: 1
+  publisher: catalog-service
+  consumers: [pricing-service, search-service, analytics-service]
+  schema: service.created.v1.json
+  aggregate: service
+  description: "Yangi xizmat (konsultatsiya, ukol, UZI...) qo'shildi."
+
+service.updated:
+  version: 1
+  publisher: catalog-service
+  consumers: [pricing-service, search-service, analytics-service]
+  schema: service.updated.v1.json
+  aggregate: service
+  description: "Xizmat o'zgardi (narx, davomiylik, nom). Bron qilingan narxlar snapshot bo'lgani uchun eski bronlarga ta'sir qilmaydi."
+
+service.deactivated:
+  version: 1
+  publisher: catalog-service
+  consumers: [pricing-service, search-service, analytics-service]
+  schema: service.deactivated.v1.json
+  aggregate: service
+  description: "Xizmat o'chirildi — yangi bronlarda tanlanmaydi."
+
+# --- slot --------------------------------------------------------
+slot.released:
+  version: 1
+  publisher: schedule-service
+  consumers: [booking-service, analytics-service]
+  schema: slot.released.v1.json
+  aggregate: slot
+  description: "Band/ushlangan slot qayta bo'shadi — booking waitlist'dagi navbatdagi mijozga taklif yuboradi; hold_expired bo'lsa kutilayotgan bronni expire qiladi."
+
+# --- schedule ----------------------------------------------------
+schedule.availability_changed:
+  version: 1
+  publisher: schedule-service
+  consumers: [search-service, ws-gateway, analytics-service]
+  schema: schedule.availability_changed.v1.json
+  aggregate: doctor
+  description: "Shifokorning bo'sh vaqtlari o'zgardi (debounce: 5 soniyada bir marta har shifokor uchun). Search `next_available_at` ni yangilaydi."
+
+# --- booking -----------------------------------------------------
+booking.created:
+  version: 1
+  publisher: booking-service
+  consumers: [pricing-service, user-service, notification-service, analytics-service, ws-gateway]
+  schema: booking.created.v1.json
+  aggregate: booking
+  description: "Bron yaratildi. prepaid/deposit rejimida `pending_payment`, at_clinic rejimida keyin darhol `booking.confirmed` keladi."
+
+booking.confirmed:
+  version: 1
+  publisher: booking-service
+  consumers: [notification-service, pricing-service, user-service, analytics-service, ws-gateway]
+  schema: booking.confirmed.v1.json
+  aggregate: booking
+  description: "Bron tasdiqlandi (to'lov tushdi yoki klinikada to'lash rejimi). Eslatmalar rejalashtiriladi, promo redemption qayd etiladi."
+
+booking.cancelled:
+  version: 1
+  publisher: booking-service
+  consumers: [schedule-service, payment-service, pricing-service, user-service, notification-service, billing-service, analytics-service, ws-gateway]
+  schema: booking.cancelled.v1.json
+  aggregate: booking
+  description: "Bron bekor qilindi. `refund_tiyin` — bekor qilish siyosati natijasi; payment-service shu summani qaytaradi. Slotni schedule-service bo'shatadi."
+
+booking.expired:
+  version: 1
+  publisher: booking-service
+  consumers: [schedule-service, pricing-service, user-service, notification-service, analytics-service, ws-gateway]
+  schema: booking.expired.v1.json
+  aggregate: booking
+  description: "To'lov muddatida kelmadi — bron yopildi, slot bo'shatiladi. Bekor qilishdan alohida (cancellation_rate'ni buzmaslik uchun)."
+
+booking.rescheduled:
+  version: 1
+  publisher: booking-service
+  consumers: [schedule-service, notification-service, analytics-service, ws-gateway]
+  schema: booking.rescheduled.v1.json
+  aggregate: booking
+  description: "Bron boshqa slotga ko'chirildi: yangi slot sinxron band qilingan, eskisini schedule-service bo'shatadi."
+
+booking.started:
+  version: 1
+  publisher: booking-service
+  consumers: [analytics-service, ws-gateway]
+  schema: booking.started.v1.json
+  aggregate: booking
+  description: "Shifokor qabulni boshladi."
+
+booking.completed:
+  version: 1
+  publisher: booking-service
+  consumers: [billing-service, review-service, pricing-service, user-service, notification-service, analytics-service, ws-gateway]
+  schema: booking.completed.v1.json
+  aggregate: booking
+  description: "Qabul yakunlandi. Billing payout'ga qo'shadi, review-service sharh qoldirishga ruxsat beradi, pricing follow-up/paket hisobini yuritadi."
+
+booking.no_show:
+  version: 1
+  publisher: booking-service
+  consumers: [pricing-service, payment-service, billing-service, user-service, notification-service, analytics-service, ws-gateway]
+  schema: booking.no_show.v1.json
+  aggregate: booking
+  description: "Kelmadi. no_show_by=client — mijoz no-show hisobiga qo'shiladi (keyingi bronlar oldindan to'lovli); no_show_by=doctor — to'liq refund."
+
+booking.confirmation_failed:
+  version: 1
+  publisher: booking-service
+  consumers: [payment-service, notification-service, analytics-service, ws-gateway]
+  schema: booking.confirmation_failed.v1.json
+  aggregate: booking
+  description: "SAGA KOMPENSATSIYASI: pul tushdi, lekin bronni tasdiqlab bo'lmadi (muddati o'tgan, slot boshqaga ketgan). payment-service to'liq refund qiladi."
+
+# --- waitlist ----------------------------------------------------
+waitlist.slot_offered:
+  version: 1
+  publisher: booking-service
+  consumers: [notification-service, ws-gateway, analytics-service]
+  schema: waitlist.slot_offered.v1.json
+  aggregate: waitlist
+  description: "Navbatdagi mijozga bo'shagan vaqt taklif qilindi (15 daqiqa ichida bron qilsa ustunlik)."
+
+# --- payment -----------------------------------------------------
+payment.created:
+  version: 1
+  publisher: payment-service
+  consumers: [analytics-service]
+  schema: payment.created.v1.json
+  aggregate: payment
+  description: "To'lov obyekti yaratildi, mijoz checkout sahifasiga yo'naltirildi."
+
+payment.captured:
+  version: 1
+  publisher: payment-service
+  consumers: [booking-service, analytics-service, ws-gateway]
+  schema: payment.captured.v1.json
+  aggregate: payment
+  description: "Pul yechildi (Payme PerformTransaction / Click Complete). Booking bronni tasdiqlaydi."
+
+payment.failed:
+  version: 1
+  publisher: payment-service
+  consumers: [analytics-service, ws-gateway]
+  schema: payment.failed.v1.json
+  aggregate: payment
+  description: "To'lov amalga oshmadi (provayder rad etdi yoki muddati o'tdi). Bron payment_due_at gacha qayta to'lash imkonini saqlaydi."
+
+payment.reversed:
+  version: 1
+  publisher: payment-service
+  consumers: [booking-service, billing-service, notification-service, analytics-service]
+  schema: payment.reversed.v1.json
+  aggregate: payment
+  description: "Provayder o'zi yechilgan pulni qaytardi (Payme CancelTransaction state=-2). Booking bronni system tomonidan bekor qiladi, qo'shimcha refund kerak emas."
+
+# --- refund ------------------------------------------------------
+refund.succeeded:
+  version: 1
+  publisher: payment-service
+  consumers: [booking-service, billing-service, dispute-service, notification-service, analytics-service]
+  schema: refund.succeeded.v1.json
+  aggregate: refund
+  description: "Pul mijozga qaytarildi. doctor_share_tiyin — refundning shifokor ulushi (billing payout'dan ushlaydi)."
+
+refund.failed:
+  version: 1
+  publisher: payment-service
+  consumers: [notification-service, analytics-service]
+  schema: refund.failed.v1.json
+  aggregate: refund
+  description: "Refund MAX_ATTEMPTS dan keyin ham amalga oshmadi — qo'lda aralashuv kerak (alert)."
+
+# --- payment -----------------------------------------------------
+payment.discrepancy_found:
+  version: 1
+  publisher: payment-service
+  consumers: [notification-service, analytics-service]
+  schema: payment.discrepancy_found.v1.json
+  aggregate: payment
+  description: "Kunlik reconciliation provayder reestri bilan farq topdi."
+
+# --- payout ------------------------------------------------------
+payout.calculated:
+  version: 1
+  publisher: billing-service
+  consumers: [notification-service, analytics-service]
+  schema: payout.calculated.v1.json
+  aggregate: payout
+  description: "Haftalik payout davri hisoblandi (shifokor ko'rib chiqishi mumkin)."
+
+payout.paid:
+  version: 1
+  publisher: billing-service
+  consumers: [payment-service, notification-service, analytics-service]
+  schema: payout.paid.v1.json
+  aggregate: payout
+  description: "Payout bank orqali o'tkazildi. payment-service ledger'da doctor_payable ni yopadi."
+
+# --- review ------------------------------------------------------
+review.submitted:
+  version: 1
+  publisher: review-service
+  consumers: [analytics-service]
+  schema: review.submitted.v1.json
+  aggregate: review
+  description: "Mijoz sharh qoldirdi (avtomatik moderatsiya bayroqlari bilan)."
+
+review.published:
+  version: 1
+  publisher: review-service
+  consumers: [notification-service, analytics-service]
+  schema: review.published.v1.json
+  aggregate: review
+  description: "Sharh e'lon qilindi (avto yoki moderator tomonidan)."
+
+review.rejected:
+  version: 1
+  publisher: review-service
+  consumers: [notification-service, analytics-service]
+  schema: review.rejected.v1.json
+  aggregate: review
+  description: "Moderator sharhni rad etdi."
+
+# --- rating ------------------------------------------------------
+rating.recalculated:
+  version: 1
+  publisher: review-service
+  consumers: [catalog-service, search-service, analytics-service]
+  schema: rating.recalculated.v1.json
+  aggregate: doctor
+  description: "Shifokor (va klinika) reytingi qayta hisoblandi. rating=null — sharhlar soni minimaldan kam."
+
+# --- dispute -----------------------------------------------------
+dispute.opened:
+  version: 1
+  publisher: dispute-service
+  consumers: [notification-service, analytics-service]
+  schema: dispute.opened.v1.json
+  aggregate: dispute
+  description: "Nizo ochildi (SLA 48 soat)."
+
+dispute.resolved:
+  version: 1
+  publisher: dispute-service
+  consumers: [payment-service, notification-service, analytics-service]
+  schema: dispute.resolved.v1.json
+  aggregate: dispute
+  description: "Nizo hal qilindi. refund_tiyin>0 bo'lsa payment-service refund qiladi (doctor_liable=false — shifokor ulushi 0); billing ushlanmani refund.succeeded.doctor_share_tiyin dan oladi (ADR-0012)."
+
+dispute.sla_breached:
+  version: 1
+  publisher: dispute-service
+  consumers: [notification-service, analytics-service]
+  schema: dispute.sla_breached.v1.json
+  aggregate: dispute
+  description: "Nizo SLA muddatida hal qilinmadi — eskalatsiya."

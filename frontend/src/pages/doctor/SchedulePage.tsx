@@ -7,7 +7,7 @@ import { api, ApiError } from '@/lib/api'
 import { useToast } from '@/lib/toast'
 import { TZ, WEEKDAYS, addDaysISO, dateLong, dateShort, dayKey, relativeDateTime, time, todayISO, weekdayShort } from '@/lib/format'
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Segmented, Select, Skeleton, Textarea, cx } from '@/components/ui'
-import { ConflictModal, SLOT_MINUTES, SectionCard, getConflict, hhmm, useMyClinics, type Conflict, type ScheduleSlot } from './shared'
+import { ConflictModal, SLOT_MINUTES, SectionCard, getConflict, hhmm, useMyClinics, type Conflict, type ScheduleSlot, useClinicName, type Appointment } from './shared'
 
 interface WorkingRule {
   id: string
@@ -118,9 +118,26 @@ function WeekCalendar() {
   const toast = useToast()
   const to = addDaysISO(monday, 6)
 
+  const clinicName = useClinicName()
+  // Kalendar (schedule) + shu oraliqdagi qabullar (booking): slotdagi bron qisqachasi `booking_id` bo'yicha
   const q = useQuery({
     queryKey: ['doctor', 'schedule', monday],
-    queryFn: () => api<ScheduleSlot[]>('/doctor/schedule', { query: { from: monday, to } }),
+    queryFn: async () => {
+      const [slots, appts] = await Promise.all([
+        api<Omit<ScheduleSlot, 'booking'>[]>('/doctor/schedule/calendar', { query: { from: monday, to } }),
+        api<Appointment[]>('/doctor/appointments', { query: { from: monday, to } }),
+      ])
+      const byId = new Map(appts.map((a) => [a.id, a]))
+      return slots.map((sl): ScheduleSlot => {
+        const a = sl.booking_id ? byId.get(sl.booking_id) : undefined
+        return {
+          ...sl,
+          booking: a
+            ? { id: a.id, number: a.number, status: a.status, patient: a.patient.full_name ?? '', services: a.services.map((x) => x.service_name) }
+            : null,
+        }
+      })
+    },
   })
 
   const days = useMemo(() => {
@@ -142,7 +159,7 @@ function WeekCalendar() {
 
   const act = useMutation({
     mutationFn: ({ slot, action }: { slot: ScheduleSlot; action: 'block' | 'unblock' }) =>
-      api(`/doctor/slots/${slot.slot_id}/${action}`, { method: 'POST', body: action === 'block' ? { note } : {} }),
+      api(`/doctor/schedule/slots/${slot.slot_id}/${action}`, { method: 'POST', body: action === 'block' ? { note } : {} }),
     onSuccess: (_d, v) => {
       toast.success(v.action === 'block' ? 'Slot yopildi' : 'Slot qayta ochildi')
       setSel(null)
@@ -245,7 +262,7 @@ function WeekCalendar() {
               </Badge>
               <Badge tone={sel.place === 'home' ? 'violet' : 'blue'}>
                 {sel.place === 'home' ? <Home className="h-3 w-3" /> : <MapPin className="h-3 w-3" />}
-                {sel.place === 'home' ? 'Uyga chaqiruv' : sel.clinic}
+                {sel.place === 'home' ? 'Uyga chaqiruv' : clinicName(sel.clinic_id) ?? 'Klinika'}
               </Badge>
             </div>
             {sel.booking && (
@@ -291,7 +308,7 @@ function RulesTab({ onChanged }: { onChanged: () => void }) {
   const toast = useToast()
   const clinicsQ = useMyClinics()
   const clinics = clinicsQ.data?.clinics ?? []
-  const q = useQuery({ queryKey: ['doctor', 'working-rules'], queryFn: () => api<WorkingRule[]>('/doctor/working-rules') })
+  const q = useQuery({ queryKey: ['doctor', 'working-rules'], queryFn: () => api<WorkingRule[]>('/doctor/schedule/rules') })
 
   const [edit, setEdit] = useState<(typeof emptyRule & { id?: string }) | null>(null)
   const [del, setDel] = useState<WorkingRule | null>(null)
@@ -333,15 +350,15 @@ function RulesTab({ onChanged }: { onChanged: () => void }) {
         valid_to: edit.valid_to || null,
         clinic_id: edit.clinic_id || null,
       }
-      if (edit.id) return api(`/doctor/working-rules/${edit.id}`, { method: 'PATCH', body, query: { resolution } })
-      return api('/doctor/working-rules', { method: 'POST', body })
+      if (edit.id) return api(`/doctor/schedule/rules/${edit.id}`, { method: 'PATCH', body, query: { resolution } })
+      return api('/doctor/schedule/rules', { method: 'POST', body })
     },
     onSuccess: () => done(edit?.id ? 'Qoida yangilandi' : "Qoida qo'shildi"),
     onError: (e: unknown) => handleErr(e, { kind: 'save' }),
   })
 
   const remove = useMutation({
-    mutationFn: ({ rule, resolution }: { rule: WorkingRule; resolution?: string }) => api(`/doctor/working-rules/${rule.id}`, { method: 'DELETE', query: { resolution } }),
+    mutationFn: ({ rule, resolution }: { rule: WorkingRule; resolution?: string }) => api(`/doctor/schedule/rules/${rule.id}`, { method: 'DELETE', query: { resolution } }),
     onSuccess: () => done("Qoida o'chirildi"),
     onError: (e: unknown, v: { rule: WorkingRule; resolution?: string }) => {
       setDel(null)
@@ -510,7 +527,7 @@ function RulesTab({ onChanged }: { onChanged: () => void }) {
 function TimeOffTab() {
   const qc = useQueryClient()
   const toast = useToast()
-  const q = useQuery({ queryKey: ['doctor', 'time-off'], queryFn: () => api<TimeOff[]>('/doctor/time-off') })
+  const q = useQuery({ queryKey: ['doctor', 'time-off'], queryFn: () => api<TimeOff[]>('/doctor/schedule/time-off') })
   const [form, setForm] = useState<null | { start: string; end: string; kind: string; reason: string }>(null)
   const [del, setDel] = useState<TimeOff | null>(null)
   const [conflict, setConflict] = useState<ConflictState | null>(null)
@@ -520,7 +537,7 @@ function TimeOffTab() {
 
   const create = useMutation({
     mutationFn: ({ resolution }: { resolution?: string }) =>
-      api('/doctor/time-off', {
+      api('/doctor/schedule/time-off', {
         method: 'POST',
         query: { resolution },
         body: { start_at: toUtc(form!.start), end_at: toUtc(form!.end), kind: form!.kind, reason: form!.reason },
@@ -541,7 +558,7 @@ function TimeOffTab() {
   })
 
   const remove = useMutation({
-    mutationFn: (t: TimeOff) => api<{ reopened_slots: number }>(`/doctor/time-off/${t.id}`, { method: 'DELETE' }),
+    mutationFn: (t: TimeOff) => api<{ reopened_slots: number }>(`/doctor/schedule/time-off/${t.id}`, { method: 'DELETE' }),
     onSuccess: (r) => {
       toast.success(`O'chirildi. ${r?.reopened_slots ?? 0} ta slot qayta ochildi`)
       setDel(null)

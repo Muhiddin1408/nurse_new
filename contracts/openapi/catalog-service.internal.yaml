@@ -1,0 +1,260 @@
+openapi: 3.1.0
+info:
+  title: catalog-service — internal API
+  version: 1.0.0
+  description: |
+    Faqat servislararo (`X-Internal-Token` + `X-Caller`). Kong `/internal/*` ni ochmaydi.
+    Ruxsat etilgan chaqiruvchilar: schedule-service, pricing-service, booking-service, billing-service,
+    search-service (faqat `/internal/v1/export/*` — reindex).
+    Pul — tiyin (butun son). Vaqt — RFC 3339 UTC. Xato formati: `{"detail": {"code", "message"}}`.
+    Chaqiruvchilar natijani qisqa keshlashi mumkin (bookability/access — 60 s, services — 60 s).
+servers: [{url: "http://catalog-service:8080"}]
+security: [{internal: []}]
+components:
+  securitySchemes:
+    internal: {type: apiKey, in: header, name: X-Internal-Token}
+  schemas:
+    ExportService:
+      type: object
+      required: [id, doctor_id, clinic_id, specialization_id, name, name_ru, place, duration_minutes, price_tiyin]
+      properties:
+        id: {type: string, format: uuid}
+        doctor_id: {type: [string, "null"], format: uuid}
+        clinic_id: {type: [string, "null"], format: uuid}
+        specialization_id: {type: string, format: uuid}
+        name: {type: string}
+        name_ru: {type: string}
+        place: {type: string, enum: [clinic, home]}
+        duration_minutes: {type: integer}
+        price_tiyin: {type: integer}
+    Point:
+      type: object
+      required: [lat, lng]
+      properties: {lat: {type: number}, lng: {type: number}}
+    Bookability:
+      type: object
+      required: [doctor_id, user_id, status, bookable, full_name, accepts_home_visits, home_visit_radius_km,
+                 home_base, clinic_payment_mode, follow_up_discount_percent, specialization_ids, clinic_ids]
+      properties:
+        doctor_id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        status: {type: string, enum: [draft, pending, approved, rejected, suspended]}
+        bookable: {type: boolean, description: "status = approved"}
+        full_name: {type: string}
+        accepts_home_visits: {type: boolean}
+        home_visit_radius_km: {type: integer}
+        home_base: {oneOf: [{$ref: "#/components/schemas/Point"}, {type: "null"}]}
+        clinic_payment_mode: {type: string, enum: [prepaid, deposit, at_clinic]}
+        follow_up_discount_percent: {type: integer, minimum: 0, maximum: 100}
+        specialization_ids: {type: array, items: {type: string, format: uuid}}
+        clinic_ids:
+          type: array
+          description: Faol hamkorlik (status=active) va faol klinika (status=active)
+          items: {type: string, format: uuid}
+    PatientRules:
+      type: object
+      description: C6 — mutaxassislikning bemor cheklovlari
+      required: [is_pediatric, accepts_children, min_patient_age, max_patient_age, allowed_gender]
+      properties:
+        is_pediatric: {type: boolean}
+        accepts_children: {type: boolean}
+        min_patient_age: {type: [integer, "null"]}
+        max_patient_age: {type: [integer, "null"]}
+        allowed_gender: {type: string, enum: ["", male, female]}
+    Service:
+      type: object
+      required: [id, doctor_id, clinic_id, specialization_id, name, name_ru, place, duration_minutes, price_tiyin,
+                 is_active, mxik_code, package_code, vat_percent, patient_rules]
+      properties:
+        id: {type: string, format: uuid}
+        doctor_id: {type: [string, "null"], format: uuid}
+        clinic_id: {type: [string, "null"], format: uuid}
+        specialization_id: {type: string, format: uuid}
+        name: {type: string}
+        name_ru: {type: string}
+        place: {type: string, enum: [clinic, home]}
+        duration_minutes: {type: integer, minimum: 5}
+        price_tiyin: {type: integer, minimum: 1}
+        is_active: {type: boolean}
+        mxik_code: {type: string, description: "Bo'sh — admin `fiscal.default_mxik_code`"}
+        package_code: {type: string}
+        vat_percent: {type: [integer, "null"]}
+        patient_rules: {$ref: "#/components/schemas/PatientRules"}
+    Clinic:
+      type: object
+      required: [id, name, city, street, latitude, longitude, status, working_hours]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        city: {type: string}
+        street: {type: string}
+        latitude: {type: number}
+        longitude: {type: number}
+        status: {type: string, enum: [draft, active, suspended]}
+        working_hours: {type: object, description: '{"0": ["08:00","18:00"], ..., "6": null}'}
+    Room:
+      type: object
+      required: [id, clinic_id, name, is_active]
+      properties:
+        id: {type: string, format: uuid}
+        clinic_id: {type: string, format: uuid}
+        name: {type: string}
+        is_active: {type: boolean}
+paths:
+  /internal/v1/doctors/{doctor_id}/bookability:
+    get:
+      summary: Shifokor bron qila oladimi + bron uchun kerakli sozlamalar
+      parameters: [{name: doctor_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Bookability"}}}}
+        "404": {description: DOCTOR_NOT_FOUND}
+  /internal/v1/services:
+    get:
+      summary: Xizmatlar ID bo'yicha (topilmaganlari ro'yxatda bo'lmaydi — chaqiruvchi sonni solishtiradi)
+      parameters:
+        - {name: ids, in: query, required: true, schema: {type: string, description: "vergul bilan, ≤ 20"}}
+        - name: bookable_for
+          in: query
+          schema: {type: string, format: uuid}
+          description: |
+            Shifokor ID — faqat shu shifokor bron qila oladigan xizmatlar (A3): faol VA
+            (shifokorning o'zi YOKI shifokor faol hamkorlikdagi faol klinikaning xizmati).
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties: {items: {type: array, items: {$ref: "#/components/schemas/Service"}}}
+  /internal/v1/access:
+    get:
+      summary: Resurs darajasidagi ruxsat — bu user shu shifokor/klinikani boshqaradimi
+      parameters:
+        - {name: user_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: doctor_id, in: query, schema: {type: string, format: uuid}}
+        - {name: clinic_id, in: query, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed, role, clinic_ids]
+                properties:
+                  allowed: {type: boolean}
+                  role: {type: [string, "null"], enum: [doctor, clinic_admin, null]}
+                  clinic_ids: {type: array, items: {type: string, format: uuid}, description: "user boshqaradigan faol klinikalar"}
+  /internal/v1/clinics/{clinic_id}:
+    get:
+      parameters: [{name: clinic_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Clinic"}}}}
+        "404": {description: CLINIC_NOT_FOUND}
+  /internal/v1/rooms/{room_id}:
+    get:
+      parameters: [{name: room_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/Room"}}}}
+        "404": {description: ROOM_NOT_FOUND}
+  # --- search-service reindex (2026-10-21): keyset sahifalash `id` bo'yicha, faqat ommaviy maydonlar ---------
+  /internal/v1/export/doctors:
+    get:
+      summary: "`approved` va `suspended` shifokorlar — faol/to'xtatilgan hamkorliklar va faol xizmatlar bilan"
+      parameters:
+        - {name: after, in: query, schema: {type: string, format: uuid}, description: "oldingi sahifaning next_after"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_after]
+                properties:
+                  next_after: {type: [string, "null"], format: uuid, description: "null — oxirgi sahifa"}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [doctor_id, user_id, full_name, status, specialization_ids, experience_years, languages,
+                                 accepts_home_visits, home_visit_radius_km, home_base, photo_file_id, rating,
+                                 reviews_count, affiliations, services]
+                      properties:
+                        doctor_id: {type: string, format: uuid}
+                        user_id: {type: string, format: uuid}
+                        full_name: {type: string}
+                        status: {type: string, enum: [approved, suspended]}
+                        specialization_ids: {type: array, items: {type: string, format: uuid}}
+                        experience_years: {type: integer}
+                        languages: {type: array, items: {type: string}}
+                        accepts_home_visits: {type: boolean}
+                        home_visit_radius_km: {type: integer}
+                        home_base: {type: [object, "null"], properties: {lat: {type: number}, lng: {type: number}}}
+                        photo_file_id: {type: [string, "null"], format: uuid}
+                        rating: {type: [number, "null"]}
+                        reviews_count: {type: integer}
+                        affiliations:
+                          type: array
+                          items:
+                            type: object
+                            required: [affiliation_id, clinic_id, status]
+                            properties:
+                              affiliation_id: {type: string, format: uuid}
+                              clinic_id: {type: string, format: uuid}
+                              status: {type: string, enum: [active, paused]}
+                        services: {type: array, items: {$ref: "#/components/schemas/ExportService"}}
+  /internal/v1/export/clinics:
+    get:
+      summary: "`active` va `suspended` klinikalar — klinikaning o'z faol xizmatlari bilan"
+      parameters:
+        - {name: after, in: query, schema: {type: string, format: uuid}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_after]
+                properties:
+                  next_after: {type: [string, "null"], format: uuid}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [clinic_id, name, city, street, latitude, longitude, status, working_hours, rating,
+                                 reviews_count, services]
+                      properties:
+                        clinic_id: {type: string, format: uuid}
+                        name: {type: string}
+                        city: {type: string}
+                        street: {type: string}
+                        latitude: {type: number}
+                        longitude: {type: number}
+                        status: {type: string, enum: [active, suspended]}
+                        working_hours: {type: [object, array]}
+                        rating: {type: [number, "null"]}
+                        reviews_count: {type: integer}
+                        services: {type: array, items: {$ref: "#/components/schemas/ExportService"}}
+  /internal/v1/export/specializations:
+    get:
+      summary: Mutaxassisliklar lug'ati (kichik — sahifalashsiz)
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, name_ru, slug]
+                      properties:
+                        id: {type: string, format: uuid}
+                        name: {type: string}
+                        name_ru: {type: string}
+                        slug: {type: string}

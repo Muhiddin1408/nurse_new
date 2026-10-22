@@ -1,0 +1,44 @@
+openapi: 3.1.0
+info:
+  title: ws-gateway
+  version: 0.1.0
+  description: |
+    Real-time kanal (WebSocket). Internal API yo'q (`/internal/*` — 403). Xato formati (handshake'gacha):
+    {"detail": {"code": "...", "message": "..."}}.
+
+    Protokol (upgrade'dan keyin, JSON matn kadrlari):
+      klient → {"action": "subscribe" | "unsubscribe" | "ping", "channel": "booking:<id>" | "doctor:<id>:schedule"}
+      server → {"type": "subscribed" | "unsubscribed" | "pong" | "error", "channel": "...", "code": "..."}
+      server → {"type": "<event_type>", "data": {...minimal maydonlar...}, "occurred_at": "..."}
+    Avtomatik obuna: `user:<token.sub>`. Xato kodlari: BAD_COMMAND, BAD_CHANNEL, FORBIDDEN, UNAVAILABLE,
+    TOO_MANY_SUBSCRIPTIONS. Yopish kodlari: 1001 server to'xtayapti (qayta ulaning), 4001 token muddati
+    tugadi (yangilab qayta ulaning), 4003 akkaunt bloklandi (qayta ulanmang), 4008 sekin klient,
+    4029 ulanishlar limiti.
+paths:
+  /ws:
+    get:
+      summary: WebSocket ulanish (Upgrade)
+      parameters:
+        - {name: token, in: query, required: false, schema: {type: string}, description: "User access JWT (yoki Authorization: Bearer)"}
+      responses:
+        "101": {description: Switching Protocols}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {description: "WRONG_AUDIENCE yoki ruxsat etilmagan Origin"}
+        "429": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+components:
+  responses:
+    Error:
+      description: Xato
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail:
+                type: object
+                required: [code, message]
+                properties:
+                  code: {type: string}
+                  message: {type: string}

@@ -3,10 +3,10 @@ import { motion } from 'framer-motion'
 import { ArrowRight, CalendarCheck2, CalendarPlus, Heart, House, MapPin, Search, Users } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { relativeDateTime } from '@/lib/format'
-import { useAddresses, useFavorites, usePatients } from '@/lib/queries'
+import { useAddresses, useDoctors, useFavorites, usePatients } from '@/lib/queries'
 import { DoctorCard } from '@/components/client'
 import { Button, Skeleton } from '@/components/ui'
-import { ACTIVE_STATUSES, BookingCard, useMyBookings } from './shared'
+import { ACTIVE_STATUSES, BookingCard, useBookingView, useMyBookings } from './shared'
 
 function greeting() {
   const h = new Date().getHours()
@@ -24,6 +24,9 @@ export default function Overview() {
   const favs = useFavorites()
   const upcoming = active.data?.pages[0]?.results ?? []
   const next = [...upcoming].filter((b) => b.start_at).sort((a, b) => (a.start_at! < b.start_at! ? -1 : 1))[0]
+  const nextView = useBookingView(next)
+  const favDocs = useDoctors((favs.data ?? []).slice(0, 3))
+  const favList = (favs.data ?? []).slice(0, 3).map((id) => favDocs.byId.get(id)).filter((d) => !!d)
 
   return (
     <div className="space-y-8">
@@ -42,7 +45,7 @@ export default function Overview() {
               <div className="min-w-0 flex-1">
                 <div className="text-sm text-white/60">Keyingi qabul</div>
                 <div className="truncate font-bold">
-                  {relativeDateTime(next.start_at)} · {next.doctor_name}
+                  {relativeDateTime(next.start_at)} · {nextView.doctorName}
                 </div>
               </div>
               <ArrowRight className="h-5 w-5 text-white/60" />
@@ -103,7 +106,7 @@ export default function Overview() {
             </Link>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {favs.data.slice(0, 3).map((d, i) => (
+            {favList.map((d, i) => (
               <DoctorCard key={d.id} d={d} index={i} />
             ))}
           </div>

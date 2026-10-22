@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/booking.confirmation_failed.v1.json",
+  "title": "booking.confirmation_failed",
+  "description": "SAGA KOMPENSATSIYASI: pul tushdi, lekin bronni tasdiqlab bo'lmadi (muddati o'tgan, slot boshqaga ketgan). payment-service to'liq refund qiladi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "booking.confirmation_failed"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "booking"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "booking_id",
+        "client_id",
+        "payment_id",
+        "amount_tiyin",
+        "reason"
+      ],
+      "properties": {
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "client_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "payment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "amount_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "booking_expired",
+            "booking_cancelled",
+            "slot_unavailable"
+          ]
+        }
+      }
+    }
+  }
+}

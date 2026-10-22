@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/payment.discrepancy_found.v1.json",
+  "title": "payment.discrepancy_found",
+  "description": "Kunlik reconciliation provayder reestri bilan farq topdi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "payment.discrepancy_found"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "payment"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "day",
+        "provider",
+        "type",
+        "payment_id",
+        "external_id",
+        "details"
+      ],
+      "properties": {
+        "day": {
+          "type": "string",
+          "format": "date"
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "payme",
+            "click",
+            "cash",
+            null
+          ],
+          "description": "Ichki tekshiruvlarda (ledger_imbalance, missing_ledger) to'lov bo'lmasa — null"
+        },
+        "type": {
+          "type": "string"
+        },
+        "payment_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "external_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "details": {
+          "type": [
+            "object",
+            "array"
+          ]
+        }
+      }
+    }
+  }
+}

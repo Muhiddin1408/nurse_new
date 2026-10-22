@@ -279,10 +279,11 @@ REST_FRAMEWORK = {
 
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 
+    # 2-bosqich (strangler): auth-service RS256 tokeni (api/auth_bridge.py) — faqat
+    # MEDBRON_JWT_PUBLIC_KEY_FILE sozlanganda ishlaydi; qolgan holatda eski HS256 (simplejwt).
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        ['rest_framework_simplejwt.authentication.JWTAuthentication']
-        if _HAS_SIMPLEJWT
-        else []
+        ['api.auth_bridge.AuthServiceTokenAuthentication']
+        + (['rest_framework_simplejwt.authentication.JWTAuthentication'] if _HAS_SIMPLEJWT else [])
     ),
 
     # Aniq ruxsat berilmagan endpoint yopiq bo'lsin — "default deny".
@@ -328,6 +329,9 @@ SPECTACULAR_SETTINGS = {
 # Swagger faqat lokalda default yoqiq. Prodda API tuzilmasini ochiq
 # e'lon qilmaslik uchun o'chiq — kerak bo'lsa SWAGGER_ENABLED=1.
 SWAGGER_ENABLED = env('SWAGGER_ENABLED', '1' if DEBUG else '0') == '1'
+
+# auth-service public kaliti (secrets/public/jwt-public.pem). Bo'sh — ko'prik o'chiq.
+MEDBRON_JWT_PUBLIC_KEY_FILE = env('MEDBRON_JWT_PUBLIC_KEY_FILE', '')
 
 SIMPLE_JWT = {
     # access qisqa muddatli: o'g'irlansa tez eskiradi

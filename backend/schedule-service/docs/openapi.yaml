@@ -1,0 +1,418 @@
+openapi: 3.1.0
+info:
+  title: schedule-service
+  version: 1.0.0
+  description: |
+    Tashqi API (Kong orqali): ommaviy slotlar, shifokor jadvali, klinika admini. Internal API —
+    contracts/openapi/schedule-service.internal.yaml (faqat booking-service).
+    Vaqt — RFC 3339 (UTC qaytariladi); sana — YYYY-MM-DD, Asia/Tashkent bo'yicha; hafta kuni — 0 = dushanba.
+    Xato formati: {"detail": {"code": "...", "message": "...", ...}}.
+
+    Jadval o'zgarishi faol bronlarga (HELD/BOOKED) tegsa — 409 LIVE_BOOKINGS, `detail.conflicts` ro'yxati bilan.
+    Faqat `?resolution=keep_bookings` qo'llab-quvvatlanadi: bronlar saqlanadi, qolgan bo'sh slotlar o'zgaradi.
+    Bronni bekor qilish — booking-service orqali (ADR-0011).
+servers: [{url: "https://api.medbron.uz"}]
+components:
+  securitySchemes:
+    userJWT: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    Resolution:
+      name: resolution
+      in: query
+      schema: {type: string, enum: [keep_bookings]}
+    ClinicID: {name: clinic_id, in: path, required: true, schema: {type: string, format: uuid}}
+  responses:
+    Error:
+      description: Xato
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail:
+                type: object
+                required: [code, message]
+                properties:
+                  code: {type: string}
+                  message: {type: string}
+    LiveBookings:
+      description: LIVE_BOOKINGS — `detail.conflicts` (ConflictSlot[]), `detail.options` = ["keep_bookings"]
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: object
+                properties:
+                  code: {const: LIVE_BOOKINGS}
+                  message: {type: string}
+                  conflicts: {type: array, items: {$ref: "#/components/schemas/ConflictSlot"}}
+                  options: {type: array, items: {type: string}}
+  schemas:
+    PublicSlot:
+      type: object
+      required: [id, start_at, end_at, clinic_id, place, price_adjust_percent]
+      properties:
+        id: {type: string, format: uuid}
+        start_at: {type: string, format: date-time}
+        end_at: {type: string, format: date-time}
+        clinic_id: {type: [string, "null"], format: uuid}
+        place: {type: string, enum: [clinic, home]}
+        price_adjust_percent: {type: integer, minimum: -90, maximum: 100}
+    Rule:
+      type: object
+      required: [id, clinic_id, room_id, place, weekday, start_time, end_time, slot_minutes, valid_from, valid_to]
+      properties:
+        id: {type: string, format: uuid}
+        clinic_id: {type: [string, "null"], format: uuid, description: "null — uy chaqiruvi"}
+        room_id: {type: [string, "null"], format: uuid, description: "faqat klinika admini biriktiradi (D8)"}
+        place: {type: string, enum: [clinic, home]}
+        weekday: {type: integer, minimum: 0, maximum: 6}
+        start_time: {type: string, example: "09:00"}
+        end_time: {type: string, example: "13:00"}
+        slot_minutes: {type: integer, enum: [10, 15, 20, 30, 40, 45, 60, 90, 120]}
+        valid_from: {type: string, format: date}
+        valid_to: {type: [string, "null"], format: date}
+    RuleInput:
+      type: object
+      required: [weekday, start_time, end_time, slot_minutes, valid_from]
+      properties:
+        clinic_id: {type: [string, "null"], format: uuid, description: "faol hamkorlik shart; null — uy (accepts_home_visits)"}
+        weekday: {type: integer, minimum: 0, maximum: 6}
+        start_time: {type: string}
+        end_time: {type: string}
+        slot_minutes: {type: integer}
+        valid_from: {type: string, format: date}
+        valid_to: {type: [string, "null"], format: date}
+    ChangeResult:
+      type: object
+      required: [removed, created, kept_bookings]
+      properties:
+        removed: {type: integer, description: "o'chirilgan/yopilgan bo'sh slotlar"}
+        created: {type: integer}
+        kept_bookings: {type: integer}
+    ConflictSlot:
+      type: object
+      required: [slot_id, start_at, end_at, status, booking_id]
+      properties:
+        slot_id: {type: string, format: uuid}
+        start_at: {type: string, format: date-time}
+        end_at: {type: string, format: date-time}
+        status: {type: string, enum: [held, booked]}
+        booking_id: {type: [string, "null"]}
+    CalendarItem:
+      type: object
+      required: [slot_id, start_at, end_at, status, block_reason, block_note, place, clinic_id, room_id, booking_id]
+      properties:
+        slot_id: {type: string, format: uuid}
+        start_at: {type: string, format: date-time}
+        end_at: {type: string, format: date-time}
+        status: {type: string, enum: [free, held, booked, blocked]}
+        block_reason:
+          type: string
+          enum: ["", manual, time_off, day_off, clinic_closed, travel_buffer, affiliation_paused, rule_changed,
+                 doctor_suspended, clinic_suspended, room_busy]
+        block_note: {type: string}
+        place: {type: string, enum: [clinic, home]}
+        clinic_id: {type: [string, "null"], format: uuid}
+        room_id: {type: [string, "null"], format: uuid}
+        booking_id: {type: [string, "null"], description: "held/booked bo'lsa — tafsilot booking-service'dan"}
+    TimeOff:
+      type: object
+      required: [id, start_at, end_at, kind, reason]
+      properties:
+        id: {type: string, format: uuid}
+        start_at: {type: string, format: date-time}
+        end_at: {type: string, format: date-time}
+        kind: {type: string, enum: [vacation, sick, personal, other]}
+        reason: {type: string, maxLength: 255}
+    DayOff:
+      type: object
+      required: [id, date, reason]
+      properties:
+        id: {type: string, format: uuid}
+        date: {type: string, format: date}
+        reason: {type: string, maxLength: 255}
+    PriceRule:
+      type: object
+      required: [id, doctor_id, name, weekdays, start_time, end_time, percent, priority, is_active, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        doctor_id: {type: string, format: uuid}
+        name: {type: string, maxLength: 100}
+        weekdays: {type: string, pattern: "^[0-6]*$", description: "masalan \"56\" — shanba-yakshanba; bo'sh — har kuni"}
+        start_time: {type: string}
+        end_time: {type: string}
+        percent: {type: integer, minimum: -90, maximum: 100}
+        priority: {type: integer, description: "kichigi ustun; tenglikda — eng kichik foiz"}
+        is_active: {type: boolean}
+        created_at: {type: string, format: date-time}
+    PriceRuleInput:
+      type: object
+      properties:
+        name: {type: string}
+        weekdays: {type: string}
+        start_time: {type: string}
+        end_time: {type: string}
+        percent: {type: integer}
+        priority: {type: integer, default: 100}
+        is_active: {type: boolean, default: true}
+paths:
+  /v1/schedule/doctors/{doctor_id}/slots:
+    get:
+      summary: Bo'sh slotlar (ommaviy). `date` — bitta kun (Redis 30 s), yoki `date_from`+`date_to` oraliq
+      description: |
+        Lead time (admin `schedule.min_lead_time_minutes`) qo'llanadi. Oraliq ≤ 31 kun, javob ≤ 200 slot.
+        `date` ham, oraliq ham berilmasa — bugun.
+      parameters:
+        - {name: doctor_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: date, in: query, schema: {type: string, format: date}}
+        - {name: date_from, in: query, schema: {type: string, format: date-time}}
+        - {name: date_to, in: query, schema: {type: string, format: date-time}}
+      responses:
+        "200":
+          description: "`Cache-Control: public, max-age=30` (kun so'rovida)"
+          content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/PublicSlot"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+
+  /v1/doctor/schedule/rules:
+    get:
+      summary: Ish qoidalari
+      security: [{userJWT: []}]
+      responses:
+        "200": {content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Rule"}}}}}
+        "403": {description: "ROLE_REQUIRED (doctor_id claim yo'q) / DOCTOR_NOT_ACTIVE"}
+    post:
+      summary: Yangi qoida (kesishuv — 409 RULE_OVERLAP) va qayta generatsiya
+      security: [{userJWT: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RuleInput"}}}}
+      responses:
+        "201":
+          content:
+            application/json:
+              schema: {type: object, properties: {rule: {$ref: "#/components/schemas/Rule"}, result: {$ref: "#/components/schemas/ChangeResult"}}}
+        "400": {description: "VALIDATION_ERROR / NO_ACTIVE_AFFILIATION / HOME_VISITS_DISABLED"}
+        "409": {description: RULE_OVERLAP}
+  /v1/doctor/schedule/rules/{rule_id}:
+    parameters: [{name: rule_id, in: path, required: true, schema: {type: string, format: uuid}}]
+    patch:
+      summary: "Qisman o'zgartirish (yuborilgan maydonlar; `valid_to: null` — muddatsiz)"
+      security: [{userJWT: []}]
+      parameters: [{$ref: "#/components/parameters/Resolution"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RuleInput"}}}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {type: object, properties: {rule: {$ref: "#/components/schemas/Rule"}, result: {$ref: "#/components/schemas/ChangeResult"}}}
+        "404": {description: RULE_NOT_FOUND}
+        "409": {$ref: "#/components/responses/LiveBookings"}
+    delete:
+      security: [{userJWT: []}]
+      parameters: [{$ref: "#/components/parameters/Resolution"}]
+      responses:
+        "200": {content: {application/json: {schema: {type: object, properties: {result: {$ref: "#/components/schemas/ChangeResult"}}}}}}
+        "404": {description: RULE_NOT_FOUND}
+        "409": {$ref: "#/components/responses/LiveBookings"}
+  /v1/doctor/schedule/regenerate:
+    post:
+      summary: Qo'lda qayta generatsiya (odatda kerak emas — qoida o'zgarganda avtomatik)
+      security: [{userJWT: []}]
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/ChangeResult"}}}}
+  /v1/doctor/schedule/day-offs:
+    get:
+      summary: Kelajakdagi dam olish kunlari
+      security: [{userJWT: []}]
+      responses:
+        "200": {content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/DayOff"}}}}}
+    post:
+      summary: Butun kun yopiladi (bugun yoki kelajak)
+      security: [{userJWT: []}]
+      parameters: [{$ref: "#/components/parameters/Resolution"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [date], properties: {date: {type: string, format: date}, reason: {type: string}}}}}
+      responses:
+        "201": {description: "{id, date, kept_bookings}"}
+        "409": {description: "DAY_OFF_EXISTS / LIVE_BOOKINGS"}
+  /v1/doctor/schedule/day-offs/{id}:
+    delete:
+      security: [{userJWT: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: "{reopened_slots}"}
+        "404": {description: NOT_FOUND}
+  /v1/doctor/schedule/time-off:
+    get:
+      summary: Tugamagan ta'tillar
+      security: [{userJWT: []}]
+      responses:
+        "200": {content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/TimeOff"}}}}}
+    post:
+      summary: Ta'til (≤ 90 kun); oraliqdagi bo'sh slotlar `time_off` bilan yopiladi
+      security: [{userJWT: []}]
+      parameters: [{$ref: "#/components/parameters/Resolution"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [start_at, end_at]
+              properties:
+                start_at: {type: string, format: date-time}
+                end_at: {type: string, format: date-time}
+                kind: {type: string, enum: [vacation, sick, personal, other], default: other}
+                reason: {type: string, maxLength: 255}
+      responses:
+        "201": {description: "{time_off: TimeOff, kept_bookings}"}
+        "409": {description: "TIME_OFF_OVERLAP / LIVE_BOOKINGS"}
+  /v1/doctor/schedule/time-off/{id}:
+    delete:
+      security: [{userJWT: []}]
+      parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "200": {description: "{reopened_slots} — boshqa sabab (dam olish kuni va h.k.) amalda bo'lsa slot yopiq qoladi"}
+        "404": {description: NOT_FOUND}
+  /v1/doctor/schedule/slots/{slot_id}/block:
+    post:
+      summary: Kelajakdagi bo'sh slotni qo'lda yopish
+      security: [{userJWT: []}]
+      parameters: [{name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody: {content: {application/json: {schema: {type: object, properties: {note: {type: string, maxLength: 255}}}}}}
+      responses:
+        "204": {description: OK}
+        "400": {description: SLOT_NOT_FREE}
+  /v1/doctor/schedule/slots/{slot_id}/unblock:
+    post:
+      summary: Qo'lda yopilgan kelajak slotni ochish
+      security: [{userJWT: []}]
+      parameters: [{name: slot_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        "204": {description: OK}
+        "400": {description: SLOT_NOT_BLOCKED}
+  /v1/doctor/schedule/calendar:
+    get:
+      summary: Taqvim (barcha holatlar), [from, to] kunlar, < 31 kun
+      security: [{userJWT: []}]
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date}}
+      responses:
+        "200": {content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/CalendarItem"}}}}}
+        "400": {description: INVALID_RANGE}
+
+  /v1/doctor/price-rules:
+    get:
+      summary: Vaqtga bog'liq narx foizlari (C12)
+      security: [{userJWT: []}]
+      responses:
+        "200": {content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/PriceRule"}}}}}
+    post:
+      security: [{userJWT: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PriceRuleInput"}}}}
+      responses:
+        "201": {content: {application/json: {schema: {$ref: "#/components/schemas/PriceRule"}}}}
+        "400": {$ref: "#/components/responses/Error"}
+  /v1/doctor/price-rules/{id}:
+    parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
+    patch:
+      security: [{userJWT: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PriceRuleInput"}}}}
+      responses:
+        "200": {content: {application/json: {schema: {$ref: "#/components/schemas/PriceRule"}}}}
+        "404": {description: NOT_FOUND}
+    delete:
+      security: [{userJWT: []}]
+      responses:
+        "204": {description: OK}
+        "404": {description: NOT_FOUND}
+
+  /v1/clinic/{clinic_id}/schedule:
+    get:
+      summary: Klinikaning bir kuni — shifokorlar bo'yicha (catalog `access`, 60 s kesh; begona klinika — 404)
+      security: [{userJWT: []}]
+      parameters:
+        - {$ref: "#/components/parameters/ClinicID"}
+        - {name: date, in: query, schema: {type: string, format: date}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  date: {type: string, format: date}
+                  doctors: {type: object, additionalProperties: {type: array, items: {$ref: "#/components/schemas/CalendarItem"}}}
+        "404": {description: CLINIC_NOT_FOUND}
+  /v1/clinic/{clinic_id}/closures:
+    parameters: [{$ref: "#/components/parameters/ClinicID"}]
+    get:
+      summary: Kelajakdagi yopiq kunlar
+      security: [{userJWT: []}]
+      responses:
+        "200": {content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/DayOff"}}}}}
+    post:
+      summary: Klinika yopiq kuni (ertadan boshlab). Bronlar bekor qilinmaydi — ro'yxati qaytadi (D7)
+      security: [{userJWT: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, required: [date], properties: {date: {type: string, format: date}, reason: {type: string}}}}}
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: {type: string, format: uuid}
+                  date: {type: string, format: date}
+                  blocked: {type: integer}
+                  bookings_to_reschedule: {type: array, items: {$ref: "#/components/schemas/ConflictSlot"}}
+        "409": {description: CLOSURE_EXISTS}
+  /v1/clinic/{clinic_id}/closures/{id}:
+    delete:
+      security: [{userJWT: []}]
+      parameters:
+        - {$ref: "#/components/parameters/ClinicID"}
+        - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "204": {description: OK}
+        "404": {description: NOT_FOUND}
+  /v1/clinic/{clinic_id}/rules:
+    get:
+      summary: Klinikadagi shifokorlar qoidalari (xona biriktirish uchun)
+      security: [{userJWT: []}]
+      parameters: [{$ref: "#/components/parameters/ClinicID"}]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {type: object, properties: {doctor_id: {type: string, format: uuid}, rule: {$ref: "#/components/schemas/Rule"}}}
+  /v1/clinic/{clinic_id}/rules/{rule_id}/room:
+    post:
+      summary: Qoidaga xona (D8). Xona boshqa shifokorda band — bo'sh slot `room_busy`, bron — `conflicts`
+      security: [{userJWT: []}]
+      parameters:
+        - {$ref: "#/components/parameters/ClinicID"}
+        - {name: rule_id, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, properties: {room_id: {type: [string, "null"], format: uuid}}}}}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  moved: {type: integer}
+                  blocked: {type: integer}
+                  conflicts: {type: array, items: {type: string, format: date-time}}
+        "400": {description: INVALID_ROOM}
+        "404": {description: RULE_NOT_FOUND}

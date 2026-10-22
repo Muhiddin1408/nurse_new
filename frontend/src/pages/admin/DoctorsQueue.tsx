@@ -28,8 +28,8 @@ export default function DoctorsQueue() {
   const [tab, setTab] = useState<Tab>('pending')
   const specs = useSpecializations()
   const q = useQuery({
-    queryKey: ['mod', 'doctors', tab],
-    queryFn: () => api<ModerationDoctor[]>('/moderation/doctors', { query: { status: tab } }),
+    queryKey: ['admin', 'doctors', tab],
+    queryFn: () => api<ModerationDoctor[]>('/admin/moderation/doctors', { query: { status: tab }, realm: 'admin' }),
   })
   const specNames = (ids: string[]) => ids.map((id) => specs.data?.find((s) => s.id === id)?.name).filter(Boolean).join(', ')
   const list = [...(q.data ?? [])].sort((a, b) => (a.sla_due_at ?? '').localeCompare(b.sla_due_at ?? ''))

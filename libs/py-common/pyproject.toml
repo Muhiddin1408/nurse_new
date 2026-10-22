@@ -1,0 +1,81 @@
+[project]
+name = "medbron-common"
+version = "0.1.0"
+description = "MedBron Python servislari uchun umumiy kod: outbox, consumer, security, http client, telemetry, health"
+requires-python = ">=3.12,<3.13"
+# Versiyalar QAT'IY (BLUEPRINT 5.1). Hamma servis libs'ning bitta versiyasini ishlatadi,
+# shuning uchun bu yerdagi pinlar butun platforma uchun haqiqat manbai.
+dependencies = [
+    "fastapi==0.156.1",
+    "pydantic==2.14.1",
+    "pydantic-settings==2.16.1",
+    "sqlalchemy[asyncio]==2.1.5",
+    "asyncpg==0.32.0",
+    "httpx==0.28.1",
+    "aio-pika==10.1.1",
+    "redis==8.1.0",
+    "pyjwt[crypto]==2.15.1",
+    "cryptography==50.0.2",
+    "prometheus-client==0.26.0",
+    "jsonschema==4.26.0",
+    "opentelemetry-api==1.45.1",
+    "opentelemetry-sdk==1.45.1",
+    "opentelemetry-exporter-otlp-proto-grpc==1.45.1",
+    "opentelemetry-instrumentation-fastapi==0.66b1",
+    "opentelemetry-instrumentation-sqlalchemy==0.66b1",
+    "opentelemetry-instrumentation-httpx==0.66b1",
+    "opentelemetry-instrumentation-aio-pika==0.66b1",
+    "sentry-sdk==2.72.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pytest-cov==7.1.0",
+    "testcontainers==4.15.0",
+    "ruff==0.17.1",
+    "mypy==2.4.0",
+    "uvicorn==0.54.0",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/medbron_common"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+markers = ["integration: Docker (testcontainers) talab qiladi"]
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["medbron_common"]
+omit = ["*/_catalog_gen.py"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["src/medbron_common/events/_catalog_gen.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "RUF"]
+ignore = ["S101", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S311", "ASYNC109", "E402", "RUF012"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["tests/"]
+
+[[tool.mypy.overrides]]
+module = ["aio_pika.*", "jsonschema.*", "referencing.*", "opentelemetry.instrumentation.*", "sentry_sdk.*"]
+ignore_missing_imports = true

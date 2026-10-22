@@ -77,10 +77,10 @@ export default function ReviewsPage() {
           {list.map((r) => (
             <article key={r.id} className="card p-5">
               <div className="flex items-start gap-3">
-                <Avatar name={r.is_anonymous ? '?' : r.author} size={44} />
+                <Avatar name={r.author || '?'} size={44} />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-bold text-ink-900">{r.is_anonymous || !r.author ? 'Anonim mijoz' : r.author}</span>
+                    <span className="font-bold text-ink-900">{r.author || 'Anonim mijoz'}</span>
                     <span className="text-xs text-ink-400">{dateLong(r.created_at)}</span>
                   </div>
                   <Stars value={r.rating} size={14} />

@@ -1,2 +1,28 @@
 # Project exclude paths
 /venv/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+
+# Maxfiy fayllar — HECH QACHON commit qilinmaydi (BLUEPRINT 11-bo'lim)
+.env
+.env.*
+!.env.example
+secrets/
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist
+
+# Test/lint keshlari
+.coverage
+coverage.out
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

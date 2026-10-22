@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/doctor.approved.v1.json",
+  "title": "doctor.approved",
+  "description": "Moderatsiyadan o'tdi — bron qabul qila oladi; auth `doctor` rolini va `doctor_id` claim'ini qo'shadi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "doctor.approved"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "doctor"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doctor_id",
+        "user_id",
+        "full_name",
+        "specialization_ids",
+        "accepts_home_visits",
+        "approved_by",
+        "approved_at"
+      ],
+      "properties": {
+        "doctor_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "specialization_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "accepts_home_visits": {
+          "type": "boolean"
+        },
+        "approved_by": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "approved_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

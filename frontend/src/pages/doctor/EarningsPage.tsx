@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Banknote, CreditCard, Download, FileText, Landmark, PiggyBank, Receipt, TrendingUp, Wallet } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { useToast } from '@/lib/toast'
-import { dateLong, dateShort, money, sumMoney } from '@/lib/format'
+import { dateLong, dateShort, money } from '@/lib/format'
 import { Badge, Button, EmptyState, ErrorState, Field, Input, Modal, PageHeader, Segmented, Skeleton, Stat, cx } from '@/components/ui'
 import { SectionCard, type Payout, type Summary, type Transaction } from './shared'
 
@@ -25,23 +25,20 @@ const PAYOUT_STATUS: Record<string, { label: string; tone: 'amber' | 'green' | '
 export default function EarningsPage() {
   const [period, setPeriod] = useState<Period>('month')
 
+  // billing-service: jami ko'rsatkichlar va bron bo'yicha qatorlar bitta javobda
   const summary = useQuery({
     queryKey: ['doctor', 'earnings', 'summary', period],
-    queryFn: () => api<Summary>('/doctor/earnings/summary', { query: { period } }),
+    queryFn: () => api<Summary & { transactions: Transaction[] }>('/doctor/earnings', { query: { period } }),
   })
   const s = summary.data
-  const tx = useQuery({
-    queryKey: ['doctor', 'earnings', 'tx', s?.period_from, s?.period_to],
-    queryFn: () => api<Summary & { transactions: Transaction[] }>('/doctor/earnings/transactions', { query: { from: s!.period_from, to: s!.period_to } }),
-    enabled: !!s,
-  })
+  const tx = summary
 
   const byDay = useMemo(() => {
-    const m = new Map<string, string[]>()
-    for (const t of tx.data?.transactions ?? []) m.set(t.date, [...(m.get(t.date) ?? []), t.net])
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, v]) => ({ d, net: sumMoney(v) }))
+    const m = new Map<string, number>()
+    for (const t of tx.data?.transactions ?? []) if (t.date) m.set(t.date, (m.get(t.date) ?? 0) + t.net_tiyin)
+    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([d, net]) => ({ d, net }))
   }, [tx.data])
-  const max = Math.max(1, ...byDay.map((x) => Number(x.net)))
+  const max = Math.max(1, ...byDay.map((x) => x.net))
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -64,10 +61,10 @@ export default function EarningsPage() {
 
       {summary.isError && <ErrorState error={summary.error} onRetry={() => summary.refetch()} />}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Stat label="Sof daromad" value={s ? money(s.net) : <Skeleton className="h-8 w-28" />} icon={<Wallet className="h-5 w-5" />} hint={s ? `${s.bookings_count} ta qabul` : undefined} />
-        <Stat label="Yalpi tushum" value={s ? money(s.gross) : <Skeleton className="h-8 w-28" />} icon={<TrendingUp className="h-5 w-5" />} tone="sky" />
-        <Stat label="To'lanishi kutilmoqda" value={s ? money(s.awaiting_payout) : <Skeleton className="h-8 w-28" />} icon={<PiggyBank className="h-5 w-5" />} tone="amber" />
-        <Stat label="To'lab berilgan" value={s ? money(s.paid_out) : <Skeleton className="h-8 w-28" />} icon={<Banknote className="h-5 w-5" />} tone="violet" />
+        <Stat label="Sof daromad" value={s ? money(s.net_tiyin) : <Skeleton className="h-8 w-28" />} icon={<Wallet className="h-5 w-5" />} hint={s ? `${s.bookings_count} ta qabul` : undefined} />
+        <Stat label="Yalpi tushum" value={s ? money(s.gross_tiyin) : <Skeleton className="h-8 w-28" />} icon={<TrendingUp className="h-5 w-5" />} tone="sky" />
+        <Stat label="To'lanishi kutilmoqda" value={s ? money(s.awaiting_payout_tiyin) : <Skeleton className="h-8 w-28" />} icon={<PiggyBank className="h-5 w-5" />} tone="amber" />
+        <Stat label="To'lab berilgan" value={s ? money(s.paid_out_tiyin) : <Skeleton className="h-8 w-28" />} icon={<Banknote className="h-5 w-5" />} tone="violet" />
       </div>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-3">
@@ -79,7 +76,7 @@ export default function EarningsPage() {
               {byDay.map((x) => (
                 <div key={x.d} className="group flex min-w-[28px] flex-1 flex-col items-center gap-1.5">
                   <span className="whitespace-nowrap text-[10px] font-bold text-ink-500 opacity-0 transition group-hover:opacity-100">{money(x.net, false)}</span>
-                  <div className="w-full rounded-t-xl bg-gradient-to-t from-brand-600 to-brand-400 shadow-glow transition group-hover:from-brand-700" style={{ height: `${(Number(x.net) / max) * 170}px`, minHeight: 6 }} />
+                  <div className="w-full rounded-t-xl bg-gradient-to-t from-brand-600 to-brand-400 shadow-glow transition group-hover:from-brand-700" style={{ height: `${(x.net / max) * 170}px`, minHeight: 6 }} />
                   <span className="text-[10px] font-semibold text-ink-400">{dateShort(x.d)}</span>
                 </div>
               ))}
@@ -89,12 +86,12 @@ export default function EarningsPage() {
         <SectionCard title="Taqsimot">
           {s ? (
             <div className="space-y-3 text-sm">
-              <Row label="Yalpi tushum" value={money(s.gross)} />
-              <Row label="Platforma komissiyasi" value={`− ${money(s.platform_fee)}`} muted />
-              <Row label="To'lov tizimi xizmati" value={`− ${money(s.provider_fee)}`} muted />
-              <Row label="Qaytarilgan" value={`− ${money(s.refunds)}`} muted />
+              <Row label="Yalpi tushum" value={money(s.gross_tiyin)} />
+              <Row label="Platforma komissiyasi" value={`− ${money(s.platform_fee_tiyin)}`} muted />
+              <Row label="To'lov tizimi xizmati" value={`− ${money(s.provider_fee_tiyin)}`} muted />
+              <Row label="Qaytarilgan" value={`− ${money(s.refunds_tiyin)}`} muted />
               <div className="h-px bg-ink-100" />
-              <Row label="Sof daromad" value={money(s.net)} strong />
+              <Row label="Sof daromad" value={money(s.net_tiyin)} strong />
             </div>
           ) : (
             <Skeleton className="h-40" />
@@ -112,7 +109,7 @@ export default function EarningsPage() {
               <thead>
                 <tr className="border-b border-ink-100 text-left text-xs font-bold uppercase tracking-wide text-ink-400">
                   <th className="px-5 py-2 sm:px-6">Sana</th>
-                  <th className="py-2">Bemor</th>
+                  <th className="py-2">Bron</th>
                   <th className="py-2">Xizmat</th>
                   <th className="py-2 text-right">Yalpi</th>
                   <th className="py-2 text-right">Sof</th>
@@ -122,11 +119,11 @@ export default function EarningsPage() {
               <tbody className="divide-y divide-ink-50">
                 {tx.data.transactions.map((t) => (
                   <tr key={t.booking_id} className="hover:bg-ink-50/50">
-                    <td className="whitespace-nowrap px-5 py-3 text-ink-600 sm:px-6">{dateShort(t.date)}</td>
-                    <td className="py-3 font-semibold text-ink-800">{t.patient}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-ink-600 sm:px-6">{t.date ? dateShort(t.date) : '—'}</td>
+                    <td className="py-3 font-semibold text-ink-800">№ {t.number}</td>
                     <td className="max-w-[200px] truncate py-3 text-ink-500">{t.services.join(', ')}</td>
-                    <td className="py-3 text-right tabular-nums text-ink-600">{money(t.gross)}</td>
-                    <td className="py-3 text-right font-bold tabular-nums text-ink-900">{money(t.net)}</td>
+                    <td className="py-3 text-right tabular-nums text-ink-600">{money(t.gross_tiyin)}</td>
+                    <td className="py-3 text-right font-bold tabular-nums text-ink-900">{money(t.net_tiyin)}</td>
                     <td className="px-5 py-3 text-right sm:px-6">
                       {t.payout_status ? <Badge tone={PAYOUT_STATUS[t.payout_status]?.tone ?? 'gray'}>{PAYOUT_STATUS[t.payout_status]?.label ?? t.payout_status}</Badge> : <Badge tone="gray">Navbatda</Badge>}
                     </td>
@@ -165,7 +162,7 @@ function Payouts() {
     try {
       const data = await api<unknown>(`/doctor/payouts/${p.id}/statement`)
       const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-      const blob = new Blob([text], { type: typeof data === 'string' && text.includes(',') ? 'text/csv;charset=utf-8' : 'text/plain;charset=utf-8' })
+      const blob = new Blob([text], { type: typeof data === 'string' && /[;,]/.test(text) ? 'text/csv;charset=utf-8' : 'text/plain;charset=utf-8' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -195,13 +192,13 @@ function Payouts() {
                 {dateShort(p.period_start)} — {dateShort(p.period_end)}
               </div>
               <div className="text-sm text-ink-500">
-                {p.bookings_count} ta qabul · yalpi {money(p.gross_amount)}
+                {p.bookings_count} ta qabul · yalpi {money(p.gross_tiyin)}
                 {p.paid_at && ` · ${dateLong(p.paid_at)} to'langan`}
               </div>
             </div>
             <div className="flex items-center gap-3">
               <div className="text-right">
-                <div className="font-extrabold text-ink-900">{money(p.net_amount)}</div>
+                <div className="font-extrabold text-ink-900">{money(p.net_tiyin)}</div>
                 <Badge tone={PAYOUT_STATUS[p.status]?.tone ?? 'gray'}>{PAYOUT_STATUS[p.status]?.label ?? p.status}</Badge>
               </div>
               <Button size="sm" variant="outline" icon={<Download className="h-4 w-4" />} loading={loading === p.id} onClick={() => openStatement(p)}>

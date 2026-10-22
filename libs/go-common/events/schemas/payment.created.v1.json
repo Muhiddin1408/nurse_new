@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.medbron.uz/events/payment.created.v1.json",
+  "title": "payment.created",
+  "description": "To'lov obyekti yaratildi, mijoz checkout sahifasiga yo'naltirildi.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "event_type",
+    "event_version",
+    "aggregate_type",
+    "data"
+  ],
+  "properties": {
+    "event_type": {
+      "const": "payment.created"
+    },
+    "event_version": {
+      "const": 1
+    },
+    "aggregate_type": {
+      "const": "payment"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payment_id",
+        "booking_id",
+        "client_id",
+        "provider",
+        "amount_tiyin"
+      ],
+      "properties": {
+        "payment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "booking_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "client_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "payme",
+            "click",
+            "cash"
+          ]
+        },
+        "amount_tiyin": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "tiyin (1 so'm = 100 tiyin)"
+        }
+      }
+    }
+  }
+}

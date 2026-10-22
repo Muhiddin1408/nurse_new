@@ -1,0 +1,46 @@
+# Qayta ishlatiladigan pipeline — Python servis (BLUEPRINT 11 CI/CD):
+#   lint → test → contracts-check → build (tag = commit SHA) → migrate → deploy
+# Chaqiruvchi: .github/workflows/svc-<servis>.yml (ci-templates/service-workflow.yml dan).
+name: _service-python
+
+on:
+  workflow_call:
+    inputs:
+      service: {type: string, required: true}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    defaults: {run: {working-directory: "backend/${{ inputs.service }}"}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: {version: "0.13.4", enable-cache: true}
+      - run: uv sync --frozen
+      - run: uv run ruff check . && uv run ruff format --check .
+      - run: uv run mypy app
+
+  test:
+    runs-on: ubuntu-24.04
+    defaults: {run: {working-directory: "backend/${{ inputs.service }}"}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: {version: "0.13.4", enable-cache: true}
+      - run: uv sync --frozen
+      - name: Unit + integratsiya (testcontainers), coverage ≥ 70%
+        run: uv run pytest --cov
+
+  contracts-check:
+    uses: ./.github/workflows/_contracts.yml
+
+  build:
+    needs: [lint, test, contracts-check]
+    uses: ./.github/workflows/_build-deploy.yml
+    with:
+      service: ${{ inputs.service }}
+    secrets: inherit

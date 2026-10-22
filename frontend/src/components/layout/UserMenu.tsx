@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Building2, Check, ChevronDown, LogOut, ShieldCheck, Stethoscope, User as UserIcon } from 'lucide-react'
+import { Building2, Check, ChevronDown, LogOut, Stethoscope, User as UserIcon } from 'lucide-react'
 import { ROLE_HOME, ROLE_LABEL, useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { phone } from '@/lib/format'
@@ -12,7 +12,6 @@ const ROLE_ICON: Record<Role, typeof UserIcon> = {
   client: UserIcon,
   doctor: Stethoscope,
   clinic_admin: Building2,
-  platform_admin: ShieldCheck,
 }
 
 export function UserMenu({ dark, compact }: { dark?: boolean; compact?: boolean }) {
