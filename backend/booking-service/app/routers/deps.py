@@ -77,6 +77,7 @@ def appointment_out(b: Booking, items: list[BookingItem], now: datetime) -> Appo
         number=b.number,
         status=b.status,
         place=b.place,
+        doctor_id=b.doctor_id,
         start_at=b.start_at,
         end_at=b.end_at,
         clinic_id=b.clinic_id,

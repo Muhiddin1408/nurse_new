@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, Clock, FileText, Hourglass, Send, ShieldOff, Trash2, Upload, UserRound } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { uploadFile } from '@/lib/files'
 import { useToast } from '@/lib/toast'
 import { dateLong, relativeDateTime } from '@/lib/format'
 import { Logo } from '@/components/Logo'
@@ -11,14 +12,13 @@ import { UserMenu } from '@/components/layout/UserMenu'
 import { Button, ErrorState, Field, Input, Select, Skeleton, Textarea, Toggle, cx } from '@/components/ui'
 import { LANGUAGES, MISSING_LABEL, useDoctorProfile, useSpecs, type DoctorProfile, type OnboardingStatus } from './shared'
 
+/** catalog-service `DocumentOut` — fayl file-service'da (maxfiy; havola faqat moderatorga) */
 interface Doc {
   id: string
   kind: string
-  original_name: string
+  file_id: string
   content_type: string
-  size: number
   created_at: string
-  download_url: string
 }
 
 const DOC_KINDS: { value: string; label: string; required?: boolean }[] = [
@@ -346,11 +346,9 @@ function DocumentsStep({ docs, loading }: { docs: Doc[]; loading: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const upload = useMutation({
-    mutationFn: (file: File) => {
-      const fd = new FormData()
-      fd.append('kind', kind)
-      fd.append('file', file)
-      return api<Doc>('/doctor/onboarding/documents', { method: 'POST', body: fd })
+    mutationFn: async (file: File) => {
+      const fileId = await uploadFile(file, 'doctor_document')
+      return api<Doc>('/doctor/onboarding/documents', { method: 'POST', body: { kind, file_id: fileId } })
     },
     onSuccess: () => {
       toast.success('Hujjat yuklandi')
@@ -428,11 +426,9 @@ function DocumentsStep({ docs, loading }: { docs: Doc[]; loading: boolean }) {
               <FileText className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <a href={d.download_url} target="_blank" rel="noreferrer" className="block truncate font-semibold text-ink-900 hover:text-brand-700">
-                {d.original_name}
-              </a>
+              <div className="truncate font-semibold text-ink-900">{DOC_KINDS.find((k) => k.value === d.kind)?.label ?? d.kind}</div>
               <div className="text-xs text-ink-500">
-                {DOC_KINDS.find((k) => k.value === d.kind)?.label ?? d.kind} · {(d.size / 1024).toFixed(0)} KB · {dateLong(d.created_at)}
+                {d.content_type === 'application/pdf' ? 'PDF' : 'Rasm'} · {dateLong(d.created_at)}
               </div>
             </div>
             <button onClick={() => remove.mutate(d.id)} disabled={remove.isPending} className="rounded-xl p-2 text-ink-400 hover:bg-rose-50 hover:text-rose-600" aria-label="O'chirish">

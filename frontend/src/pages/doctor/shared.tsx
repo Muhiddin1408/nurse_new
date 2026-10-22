@@ -15,11 +15,13 @@ export interface OnboardingStatus {
   sla_due_at: string | null
 }
 
+/** catalog-service `DoctorPrivate` (onboarding va kabinet profili) */
 export interface DoctorProfile {
   id: string
+  user_id: string
   status: string
+  status_reason: string
   full_name: string
-  phone: string
   specialization_ids: string[]
   bio: string
   experience_years: number
@@ -29,8 +31,24 @@ export interface DoctorProfile {
   license_expires_at: string | null
   accepts_home_visits: boolean
   home_visit_radius_km: number
+  home_base_latitude: string | null
+  home_base_longitude: string | null
+  clinic_payment_mode: string
+  follow_up_discount_percent: number
+  photo_url: string | null
+  submitted_at: string | null
 }
 
+/** Bron paytidagi bemor nusxasi (booking-service) */
+export interface PatientSnapshot {
+  full_name?: string
+  relation?: string
+  birth_date?: string
+  gender?: string
+  weight_kg?: number | null
+}
+
+/** booking-service `AppointmentOut` (+ `patient_history` tafsilotda). Klinika nomi — catalog'dan (`clinic_id`). */
 export interface Appointment {
   id: string
   number: string
@@ -38,19 +56,21 @@ export interface Appointment {
   start_at: string
   end_at: string
   place: 'home' | 'clinic' | string
-  clinic: { id: string; name: string } | null
-  patient: { full_name: string; age: number | null; gender: string; weight_kg: number | null }
-  services: { name: string; duration_minutes: number }[]
+  clinic_id: string | null
+  patient: PatientSnapshot
+  services: { service_id: string; service_name: string; price_tiyin: number; duration_minutes: number }[]
   client_comment: string
-  client_phone: string | null
-  contact_available_from: string | null
   started_at: string | null
   completed_at: string | null
   note: string
-  address?: { city: string; street: string; latitude: string; longitude: string; entrance?: string; floor?: string; apartment?: string; comment?: string }
+  total_tiyin: number
+  /** Klinikada yoki uyda olinadigan qoldiq (zaklad / at_clinic) */
+  to_collect_tiyin: number
+  address?: { city?: string; district?: string; street?: string; latitude?: string; longitude?: string; entrance?: string; floor?: string; apartment?: string; comment?: string } | null
   patient_history?: { date: string; status: string; services: string[]; note: string }[]
 }
 
+/** schedule-service kalendari (`CalendarItem`) + booking'dan bron qisqachasi (`booking_id` bo'yicha) */
 export interface ScheduleSlot {
   slot_id: string
   start_at: string
@@ -59,81 +79,88 @@ export interface ScheduleSlot {
   block_reason: string
   block_note: string
   place: string
-  clinic: string | null
+  clinic_id: string | null
+  room_id: string | null
+  booking_id: string | null
   booking: null | { id: string; number: string; status: string; patient: string; services: string[] }
 }
 
+/** schedule-service `ConflictSlot` (409 LIVE_BOOKINGS) */
 export interface Conflict {
-  booking_id: string
-  booking_number: string
+  slot_id: string
+  booking_id: string | null
   status: string
   start_at: string
   end_at: string
-  patient: string
 }
 
+/** catalog-service `ServiceOut` */
 export interface ServiceRead {
   id: string
+  doctor_id: string | null
+  clinic_id: string | null
   specialization_id: string
   name: string
   name_ru: string
   description: string
   place: 'clinic' | 'home' | string
   duration_minutes: number
-  price: string
+  price_tiyin: number
   is_active: boolean
 }
 
+/** billing-service `EarningsOut` */
 export interface Summary {
   period_from: string
   period_to: string
   bookings_count: number
-  gross: string
-  platform_fee: string
-  provider_fee: string
-  refunds: string
-  net: string
-  paid_out: string
-  awaiting_payout: string
+  gross_tiyin: number
+  platform_fee_tiyin: number
+  provider_fee_tiyin: number
+  refunds_tiyin: number
+  net_tiyin: number
+  paid_out_tiyin: number
+  awaiting_payout_tiyin: number
 }
 
 export interface Transaction {
   booking_id: string
   number: string
-  date: string
-  patient: string
+  date: string | null
   services: string[]
   status: string
-  gross: string
-  platform_fee: string
-  provider_fee: string
-  refunds: string
-  net: string
+  gross_tiyin: number
+  platform_fee_tiyin: number
+  provider_fee_tiyin: number
+  refunds_tiyin: number
+  net_tiyin: number
   payout_id: string | null
   payout_status: string | null
 }
 
 export interface Payout {
   id: string
+  doctor_id: string
   period_start: string
   period_end: string
   status: string
   bookings_count: number
-  gross_amount: string
-  platform_fee: string
-  provider_fee: string
-  refunds_amount: string
-  net_amount: string
+  gross_tiyin: number
+  platform_fee_tiyin: number
+  provider_fee_tiyin: number
+  refunds_tiyin: number
+  net_tiyin: number
   paid_at: string | null
   bank_reference: string
 }
 
+/** review-service `PublicReviewOut` */
 export interface Review {
   id: string
+  doctor_id: string
   rating: number
   comment: string
   author: string | null
-  is_anonymous: boolean
   created_at: string
   doctor_reply: string | null
   doctor_replied_at: string | null
@@ -142,6 +169,7 @@ export interface Review {
 // ---- constants -------------------------------------------------------------
 export const APPT_STATUS = {
   confirmed: { label: 'Tasdiqlangan', tone: 'blue' as const },
+  in_progress: { label: 'Qabulda', tone: 'violet' as const },
   completed: { label: 'Yakunlangan', tone: 'green' as const },
   cancelled: { label: 'Bekor qilingan', tone: 'gray' as const },
   no_show: { label: 'Kelmadi', tone: 'red' as const },
@@ -190,6 +218,12 @@ export function useMyClinics() {
   })
 }
 
+/** clinic_id → nom (qabullar faqat ID saqlaydi; shifokorning klinikalari — ochiq kartochkadan) */
+export function useClinicName() {
+  const clinics = useMyClinics()
+  return (id: string | null | undefined) => (id ? clinics.data?.clinics.find((c) => c.id === id)?.name : undefined)
+}
+
 export function useSpecs() {
   return useQuery({ queryKey: ['specializations'], queryFn: () => api<Specialization[]>('/catalog/specializations', { auth: false }), staleTime: 600_000 })
 }
@@ -199,17 +233,18 @@ export function hhmm(t: string) {
 }
 
 // ---- 409 ScheduleConflict ----------------------------------------------------
+/** schedule-service: `409 {"detail": {"code": "LIVE_BOOKINGS", "message", "conflicts", "options"}}` */
 export function getConflict(e: unknown): { detail: string; conflicts: Conflict[]; options: string[] } | null {
-  if (e instanceof ApiError && e.status === 409 && e.data && typeof e.data === 'object' && 'conflicts' in e.data) {
-    const d = e.data as { detail: string; conflicts: Conflict[]; options: string[] }
-    return { detail: d.detail, conflicts: d.conflicts || [], options: d.options || [] }
+  if (e instanceof ApiError && e.status === 409 && e.code === 'LIVE_BOOKINGS') {
+    const d = (e.data as { detail?: { conflicts?: Conflict[]; options?: string[] } })?.detail ?? {}
+    return { detail: e.detail, conflicts: d.conflicts ?? [], options: d.options ?? ['keep_bookings'] }
   }
   return null
 }
 
+// Jadval qabulni o'zi bekor qilmaydi (egasi — booking): kerak bo'lsa qabulni "Qabullar" bo'limidan bekor qiling
 const RES_LABEL: Record<string, { title: string; text: string }> = {
   keep_bookings: { title: 'Qabullarni saqlash', text: "Tasdiqlangan qabullar o'z joyida qoladi, faqat yangi slotlar o'zgaradi." },
-  cancel_and_refund: { title: 'Bekor qilib pulini qaytarish', text: "Ta'sirlangan qabullar bekor qilinadi, mijozlarga 100% qaytariladi va xabar yuboriladi." },
 }
 
 export function ConflictModal({
@@ -247,11 +282,9 @@ export function ConflictModal({
       </div>
       <div className="mb-4 max-h-48 space-y-2 overflow-y-auto">
         {conflict?.conflicts.map((c) => (
-          <div key={c.booking_id} className="flex items-center justify-between rounded-2xl bg-ink-50 px-4 py-2.5 text-sm">
-            <span className="font-semibold text-ink-800">{c.patient}</span>
-            <span className="text-ink-500">
-              {relativeDateTime(c.start_at)} · #{c.booking_number}
-            </span>
+          <div key={c.slot_id} className="flex items-center justify-between rounded-2xl bg-ink-50 px-4 py-2.5 text-sm">
+            <span className="font-semibold text-ink-800">{relativeDateTime(c.start_at)}</span>
+            <span className="text-ink-500">{c.status === 'booked' ? 'Tasdiqlangan qabul' : "To'lov kutilmoqda"}</span>
           </div>
         ))}
       </div>

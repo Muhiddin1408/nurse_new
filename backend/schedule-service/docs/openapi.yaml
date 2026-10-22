@@ -198,7 +198,7 @@ paths:
   /v1/doctor/schedule/rules/{rule_id}:
     parameters: [{name: rule_id, in: path, required: true, schema: {type: string, format: uuid}}]
     patch:
-      summary: Qisman o'zgartirish (yuborilgan maydonlar; `valid_to: null` — muddatsiz)
+      summary: "Qisman o'zgartirish (yuborilgan maydonlar; `valid_to: null` — muddatsiz)"
       security: [{userJWT: []}]
       parameters: [{$ref: "#/components/parameters/Resolution"}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RuleInput"}}}}

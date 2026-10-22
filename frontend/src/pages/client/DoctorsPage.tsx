@@ -4,7 +4,7 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Building2, House, LocateFixed, Search, SlidersHorizontal, Star, X } from 'lucide-react'
 import { api, asList } from '@/lib/api'
-import { useClinics, useSpecializations } from '@/lib/queries'
+import { searchDoctors, useClinics, useSpecializations } from '@/lib/queries'
 import { useToast } from '@/lib/toast'
 import type { DoctorList } from '@/lib/types'
 import { DoctorCard, DoctorCardSkeleton, specIcon } from '@/components/client'
@@ -59,26 +59,16 @@ export default function DoctorsPage() {
       // Klinika filtri faqat /catalog/doctors da bor
       if (clinic) {
         const rows = asList<DoctorList>(
-          await api('/catalog/doctors', { auth: false, query: { clinic, specialization, home_only: home ? 1 : undefined, limit: PAGE, offset: pageParam } }),
+          await api('/catalog/doctors', { auth: false, query: { clinic, specialization, home_only: home ? true : undefined, limit: PAGE, offset: pageParam } }),
         )
-        return { results: rows, total: null as number | null }
+        return { results: rows, total: null as number | null, degraded: false }
       }
-      return api<{ results: DoctorList[]; total: number | null }>('/catalog/search', {
-        auth: false,
-        query: {
-          q,
-          specialization,
-          home_only: home ? 1 : undefined,
-          min_rating: minRating,
-          sort,
-          lat,
-          lng,
-          limit: PAGE,
-          offset: pageParam,
-        },
-      })
+      // Reyting filtri qidiruv servisida yo'q — sahifa ichida (reyting faqat ≥ 5 sharhli shifokorlarda)
+      const page = await searchDoctors({ q, specialization, home: !!home, sort, lat, lng, limit: PAGE, offset: pageParam })
+      const min = Number(minRating)
+      return min ? { ...page, results: page.results.filter((d) => Number(d.rating ?? 0) >= min) } : page
     },
-    getNextPageParam: (last, all) => (last.results.length < PAGE ? undefined : all.length * PAGE),
+    getNextPageParam: (last, all) => (last.results.length < PAGE && !minRating ? undefined : all.length * PAGE),
   })
 
   const doctors = useMemo(() => query.data?.pages.flatMap((p) => p.results) ?? [], [query.data])

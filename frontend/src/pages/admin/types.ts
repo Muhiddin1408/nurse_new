@@ -1,49 +1,86 @@
+// Moderatsiya (platforma admini) tiplari — `/v1/admin/*` javoblari, admin JWT bilan (`realm: 'admin'`). Pul — tiyin.
+
+/** catalog-service `DocumentOut` — fayl havolasi alohida: `GET .../documents/{id}/url` (qisqa muddatli) */
 export interface ModDocument {
   id: string
   kind: 'diploma' | 'license' | 'certificate' | 'passport' | string
-  original_name: string
+  file_id: string
   content_type: string
-  size: number
   created_at: string
-  download_url: string
 }
 
+/** catalog-service `ModerationDoctor` */
 export interface ModerationDoctor {
   id: string
+  user_id: string
   status: 'draft' | 'pending' | 'approved' | 'rejected' | 'suspended' | string
+  status_reason: string
   full_name: string
-  phone: string
-  specialization_ids: string[]
   bio: string
-  experience_years: number
   education: string
+  experience_years: number
   languages: string[]
   license_number: string
   license_expires_at: string | null
   accepts_home_visits: boolean
   home_visit_radius_km: number
-  status_reason: string
+  clinic_payment_mode: string
+  follow_up_discount_percent: number
+  photo_url: string | null
+  specialization_ids: string[]
   submitted_at: string | null
+  documents: ModDocument[]
   moderated_at: string | null
   sla_due_at: string | null
-  documents: ModDocument[]
 }
 
+/** review-service `AdminReviewOut` */
 export interface ModReview {
   id: string
+  booking_id: string
+  booking_number: string
+  client_id: string
+  doctor_id: string
+  clinic_id: string | null
   rating: number
   comment: string
-  author: string | null
   is_anonymous: boolean
-  created_at: string
-  doctor_reply: string | null
-  doctor_replied_at: string | null
-  status: string
+  author_name: string
+  status: 'published' | 'pending' | 'rejected' | string
   moderation_flags: string[]
-  booking_number: string
-  doctor_id: string
+  moderated_at: string | null
+  reject_reason: string
+  doctor_reply: string
+  created_at: string
 }
 
+/** dispute-service `AdminDisputeOut` */
+export interface AdminDispute {
+  id: string
+  booking_id: string
+  booking_number: string
+  reason: string
+  description: string
+  status: 'open' | 'resolved' | 'closed' | string
+  due_at: string
+  resolution: 'refund_full' | 'refund_partial' | 'rejected' | null
+  refund_tiyin: number
+  refunded_tiyin: number
+  resolution_note: string
+  resolved_at: string | null
+  closed_at: string | null
+  created_at: string
+  evidence: { file_id: string; content_type: string; created_at: string; url: string | null }[]
+  client_id: string
+  doctor_id: string
+  paid_tiyin: number
+  doctor_liable: boolean | null
+  resolved_by: string | null
+  sla_breached_at: string | null
+  refund_id: string | null
+}
+
+/** billing-service `PayoutOut` */
 export interface Payout {
   id: string
   doctor_id: string
@@ -51,11 +88,11 @@ export interface Payout {
   period_end: string
   status: 'pending' | 'paid' | string
   bookings_count: number
-  gross_amount: string
-  platform_fee: string
-  provider_fee: string
-  refunds_amount: string
-  net_amount: string
+  gross_tiyin: number
+  platform_fee_tiyin: number
+  provider_fee_tiyin: number
+  refunds_tiyin: number
+  net_tiyin: number
   paid_at: string | null
   bank_reference: string
 }
@@ -86,8 +123,14 @@ export const DISPUTE_REASON: Record<string, string> = {
 
 export const DISPUTE_STATUS = {
   open: { label: 'Ochiq', tone: 'amber' as const },
-  resolved_client: { label: 'Mijoz foydasiga', tone: 'blue' as const },
-  resolved_doctor: { label: 'Shifokor foydasiga', tone: 'green' as const },
+  resolved: { label: 'Hal qilingan', tone: 'blue' as const },
+  closed: { label: 'Yopilgan', tone: 'green' as const },
+}
+
+export const DISPUTE_RESOLUTION: Record<string, string> = {
+  refund_full: "To'liq qaytarish",
+  refund_partial: 'Qisman qaytarish',
+  rejected: 'Rad etildi',
 }
 
 export const REVIEW_FLAG: Record<string, string> = {

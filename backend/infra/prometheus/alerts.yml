@@ -51,6 +51,97 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Reconciliation provayder bilan farq topdi"
+      - alert: PaymentWebhookInternalError
+        # Payme/Click webhook'ida kutilmagan xato (500 o'rniga protokol xatosi qaytdi) — pul holati noaniq bo'lishi mumkin
+        expr: sum by (method) (increase(payment_webhook_received_total{result="exception"}[10m])) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "To'lov webhook'i ichki xato ({{ $labels.method }})"
+          description: "provider_logs va payment-service loglarini tekshiring. docs/runbooks/incidents.md#tolov"
+      - alert: PaymentWebhookErrorRateHigh
+        # Biznes rad etishlar (summa, muddat) normal; ulushi keskin oshsa — konfiguratsiya / imzo / booking muammosi
+        expr: |
+          sum(rate(payment_webhook_received_total{result="error"}[15m]))
+            / clamp_min(sum(rate(payment_webhook_received_total[15m])), 1e-9) > 0.3
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "To'lov webhook'larining > 30% i xato bilan qaytmoqda"
+      - alert: RefundManualQueue
+        expr: sum(increase(refunds_total{status="manual_required"}[1h])) > 0
+        labels: {severity: info}
+        annotations:
+          summary: "Refund admin navbatida (manual_required) — provayder kabinetida qaytarib tasdiqlang"
+      - alert: ReconciliationNotRun
+        expr: time() - max(periodic_job_last_success_timestamp{job="reconcile-internal"}) > 26 * 3600
+        labels: {severity: warning}
+        annotations:
+          summary: "Ichki reconciliation 26 soatdan beri muvaffaqiyatli ishlamagan"
+      - alert: RefundWorkerStale
+        expr: time() - max(periodic_job_last_success_timestamp{job="refunds-process"}) > 600
+        labels: {severity: critical}
+        annotations:
+          summary: "Refund ishchisi 10 daqiqadan beri ishlamayapti (payment-service-scheduler)"
+
+  - name: medbron-workers
+    rules:
+      - alert: PeriodicJobFailing
+        expr: sum by (service, job) (increase(periodic_job_runs_total{result="error"}[30m])) > 2
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.service }}: davriy vazifa {{ $labels.job }} xato bermoqda"
+      - alert: WorkerDown
+        expr: up{job="medbron-workers"} == 0
+        for: 3m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.service }} {{ $labels.worker }} ishlamayapti"
+
+  - name: medbron-extras
+    rules:
+      - alert: DisputeSlaBreached
+        expr: sum(increase(disputes_sla_breached_total[1h])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Nizo SLA muddatida hal qilinmadi"
+      - alert: SearchDegraded
+        # Elasticsearch ishlamayapti — qidiruv Postgres zaxirasidan (sekinroq, imloni kechirmaydi)
+        expr: sum(rate(search_requests_total{engine="postgres"}[5m])) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Qidiruv zaxira rejimida (Elasticsearch javob bermayapti)"
+          description: "docs/runbooks/incidents.md#qidiruv"
+      - alert: SearchReindexFailed
+        expr: sum(increase(search_reindex_runs_total{status="failed"}[1h])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Qidiruv reindex'i yiqildi — eski indeks alias ostida qoldi"
+      - alert: AnalyticsIngestFailing
+        expr: sum(increase(analytics_ingest_errors_total[10m])) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "analytics: ClickHouse'ga yozib bo'lmayapti (navbat to'planmoqda)"
+      - alert: RealtimeDeliveryStalled
+        # Eventlar kelmoqda, lekin klientlarga hech narsa yuborilmayapti (Redis pub/sub uzilgan)
+        expr: sum(rate(ws_events_consumed_total[10m])) > 0 and sum(rate(ws_bus_delivered_total[10m])) == 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "ws-gateway: eventlar keladi, lekin pub/sub orqali tarqalmayapti"
+
+  - name: medbron-gateway
+    rules:
+      - alert: GatewayHigh5xx
+        expr: |
+          sum(rate(kong_http_requests_total{code=~"5.."}[5m]))
+            / clamp_min(sum(rate(kong_http_requests_total[5m])), 1e-9) > 0.02
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "Kong: 5xx ulushi > 2% (upstream yiqilgan yoki 502/504)"
+          description: "docs/runbooks/incidents.md#gateway"
 
   - name: medbron-http
     rules:

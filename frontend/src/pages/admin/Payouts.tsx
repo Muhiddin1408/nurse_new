@@ -2,25 +2,22 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Banknote, CheckCircle2 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { dateShort, money, relativeDateTime, sumMoney } from '@/lib/format'
+import { dateShort, money, relativeDateTime, toTiyin } from '@/lib/format'
+import { useDoctors } from '@/lib/queries'
 import { useToast } from '@/lib/toast'
 import { Badge, Button, EmptyState, ErrorState, Field, Input, ListSkeleton, Modal, PageHeader, Segmented, Stat } from '@/components/ui'
 import type { Payout } from './types'
 
-/** "1 250 000,50" / "1250000.5" → "1250000.50" taqqoslash uchun */
-function normalizeAmount(s: string) {
-  const clean = s.replace(/[\s']/g, '').replace(',', '.')
-  if (!/^\d+(\.\d{0,2})?$/.test(clean)) return null
-  const [i, f = ''] = clean.split('.')
-  return `${BigInt(i)}.${(f + '00').slice(0, 2)}`
-}
-
 export default function Payouts() {
   const [tab, setTab] = useState<'pending' | 'paid'>('pending')
   const [target, setTarget] = useState<Payout | null>(null)
-  const q = useQuery({ queryKey: ['mod', 'payouts', tab], queryFn: () => api<Payout[]>('/moderation/payouts', { query: { status: tab } }) })
+  const q = useQuery({
+    queryKey: ['admin', 'payouts', tab],
+    queryFn: () => api<Payout[]>('/admin/payouts', { query: { status: tab, limit: 200 }, realm: 'admin' }),
+  })
   const list = q.data ?? []
-  const total = list.length ? sumMoney(list.map((p) => p.net_amount)) : '0'
+  const total = list.reduce((s, p) => s + p.net_tiyin, 0)
+  const doctors = useDoctors(list.map((p) => p.doctor_id))
 
   return (
     <div>
@@ -48,19 +45,19 @@ export default function Payouts() {
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wider text-ink-400">Davr</div>
                   <div className="font-bold text-ink-900">{dateShort(p.period_start)} — {dateShort(p.period_end)}</div>
-                  <div className="mt-0.5 font-mono text-xs text-ink-400">Shifokor: {p.doctor_id.slice(0, 8)}…</div>
+                  <div className="mt-0.5 text-sm text-ink-500">{doctors.byId.get(p.doctor_id)?.full_name ?? <span className="font-mono text-xs text-ink-400">{p.doctor_id.slice(0, 8)}…</span>}</div>
                 </div>
                 {p.status === 'paid' ? <Badge tone="green" dot>To'langan</Badge> : <Badge tone="amber" dot>Kutilmoqda</Badge>}
               </div>
               <dl className="mt-4 space-y-1.5 text-sm">
-                <Row label={`Yalpi (${p.bookings_count} ta qabul)`} value={money(p.gross_amount)} />
-                <Row label="Platforma komissiyasi" value={`−${money(p.platform_fee)}`} muted />
-                <Row label="To'lov tizimi" value={`−${money(p.provider_fee)}`} muted />
-                {Number(p.refunds_amount) > 0 && <Row label="Qaytarilgan" value={`−${money(p.refunds_amount)}`} muted />}
+                <Row label={`Yalpi (${p.bookings_count} ta qabul)`} value={money(p.gross_tiyin)} />
+                <Row label="Platforma komissiyasi" value={`−${money(p.platform_fee_tiyin)}`} muted />
+                <Row label="To'lov tizimi" value={`−${money(p.provider_fee_tiyin)}`} muted />
+                {p.refunds_tiyin > 0 && <Row label="Qaytarilgan" value={`−${money(p.refunds_tiyin)}`} muted />}
               </dl>
               <div className="mt-3 flex items-center justify-between rounded-2xl bg-brand-50 px-4 py-3">
                 <span className="text-sm font-semibold text-brand-800">Shifokorga</span>
-                <span className="text-xl font-extrabold tabular-nums text-brand-700">{money(p.net_amount)}</span>
+                <span className="text-xl font-extrabold tabular-nums text-brand-700">{money(p.net_tiyin)}</span>
               </div>
               {p.status === 'paid' ? (
                 <div className="mt-3 text-xs text-ink-500">
@@ -92,13 +89,14 @@ function MarkPaidModal({ payout, onClose }: { payout: Payout; onClose: () => voi
   const toast = useToast()
   const [ref, setRef] = useState('')
   const [amount, setAmount] = useState('')
-  const matches = normalizeAmount(amount) === normalizeAmount(payout.net_amount)
+  // Summani qayta yozish — tasodifiy bosishdan himoya
+  const matches = toTiyin(amount) === payout.net_tiyin
 
   const m = useMutation({
-    mutationFn: () => api<Payout>(`/moderation/payouts/${payout.id}/mark-paid`, { method: 'POST', body: { bank_reference: ref.trim() } }),
+    mutationFn: () => api<Payout>(`/admin/payouts/${payout.id}/mark-paid`, { method: 'POST', body: { bank_reference: ref.trim() }, realm: 'admin' }),
     onSuccess: () => {
       toast.success("To'lov belgilandi")
-      qc.invalidateQueries({ queryKey: ['mod', 'payouts'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'payouts'] })
       onClose()
     },
     onError: (e) => toast.error(e),
@@ -124,13 +122,13 @@ function MarkPaidModal({ payout, onClose }: { payout: Payout; onClose: () => voi
         </div>
         <div className="rounded-2xl bg-ink-50 px-4 py-3 text-center">
           <div className="text-xs font-semibold text-ink-500">O'tkaziladigan summa</div>
-          <div className="text-2xl font-extrabold tabular-nums text-ink-900">{money(payout.net_amount)}</div>
+          <div className="text-2xl font-extrabold tabular-nums text-ink-900">{money(payout.net_tiyin)}</div>
         </div>
         <Field label="Bank to'lov raqami (reference)">
           <Input autoFocus value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Masalan: PP-2026-000123" />
         </Field>
         <Field label="Tasdiqlash uchun summani qayta yozing" error={amount && !matches ? "Summa mos kelmadi" : undefined} hint={matches ? '✓ Summa mos' : undefined}>
-          <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={money(payout.net_amount, false)} />
+          <Input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={money(payout.net_tiyin, false)} />
         </Field>
       </div>
     </Modal>

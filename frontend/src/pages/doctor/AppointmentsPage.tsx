@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { addDaysISO, dateLong, dateShort, dayKey, time, todayISO, weekday } from '@/lib/format'
 import { Avatar, Button, EmptyState, ErrorState, ListSkeleton, PageHeader, Segmented, StatusBadge } from '@/components/ui'
 import { AppointmentActions, AppointmentDetailModal, patientLine } from './appointments-ui'
-import { APPT_STATUS, type Appointment } from './shared'
+import { APPT_STATUS, type Appointment, useClinicName } from './shared'
 
 function mondayOf(iso: string) {
   const d = new Date(iso + 'T12:00:00Z')
@@ -17,6 +17,7 @@ type Range = 'week' | 'month'
 type StatusFilter = 'all' | 'confirmed' | 'completed' | 'no_show' | 'cancelled'
 
 export default function AppointmentsPage() {
+  const clinicName = useClinicName()
   const [range, setRange] = useState<Range>('week')
   const [anchor, setAnchor] = useState(() => mondayOf(todayISO()))
   const [status, setStatus] = useState<StatusFilter>('all')
@@ -118,11 +119,11 @@ export default function AppointmentsPage() {
                         <StatusBadge status={a.status} map={APPT_STATUS} />
                       </div>
                       <div className="truncate text-sm text-ink-500">
-                        {a.services.map((s) => s.name).join(', ')} · {patientLine(a)}
+                        {a.services.map((s) => s.service_name).join(', ')} · {patientLine(a)}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1 text-xs text-ink-400">
                         {a.place === 'home' ? <Home className="h-3 w-3" /> : <MapPin className="h-3 w-3" />}
-                        {a.place === 'home' ? 'Uyga chaqiruv' : a.clinic?.name} · #{a.number}
+                        {a.place === 'home' ? 'Uyga chaqiruv' : clinicName(a.clinic_id)} · #{a.number}
                       </div>
                     </div>
                   </button>

@@ -48,10 +48,10 @@ export function FavoriteButton({ doctorId, className }: { doctorId: string; clas
   const toast = useToast()
   const qc = useQueryClient()
   const favs = useFavorites()
-  const isFav = !!favs.data?.some((d) => d.id === doctorId)
+  const isFav = !!favs.data?.includes(doctorId)
 
   const m = useMutation({
-    mutationFn: () => api(`/catalog/doctors/${doctorId}/favorite`, { method: isFav ? 'DELETE' : 'PUT' }),
+    mutationFn: () => api(`/users/me/favorites/${doctorId}`, { method: isFav ? 'DELETE' : 'PUT' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['favorites'] })
       toast.success(isFav ? "Sevimlilardan olib tashlandi" : "Sevimlilarga qo'shildi")
@@ -92,7 +92,7 @@ export function DoctorCard({ d, index = 0 }: { d: DoctorList; index?: number }) 
           </div>
           <div className="min-w-0">
             <h3 className="line-clamp-2 text-[17px] font-bold leading-snug text-ink-900 group-hover:text-brand-700">{d.full_name}</h3>
-            <p className="mt-0.5 truncate text-sm font-medium text-brand-700">{d.specializations.join(', ') || 'Shifokor'}</p>
+            <p className="mt-0.5 truncate text-sm font-medium text-brand-700">{d.specializations.map((s) => s.name).join(', ') || 'Shifokor'}</p>
             <p className="mt-1 text-sm text-ink-500">{d.experience_years} yillik tajriba</p>
           </div>
         </div>

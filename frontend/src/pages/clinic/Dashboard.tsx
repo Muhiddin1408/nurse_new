@@ -1,11 +1,11 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ArrowRight, Banknote, CalendarCheck2, Clock, MapPin, Phone, Star, TrendingUp, UserX } from 'lucide-react'
+import { ArrowRight, Banknote, CalendarCheck2, Clock, MapPin, Phone, Star, Undo2, UserX } from 'lucide-react'
 import { addDaysISO, money, phone, time, todayISO } from '@/lib/format'
 import { Badge, Button, EmptyState, ErrorState, ListSkeleton, Stat, StatusBadge } from '@/components/ui'
-import { useClinic, useClinicProfile } from './ctx'
-import type { ClinicAppointment, ClinicReport } from './types'
+import { useClinic, useClinicLookup, useClinicProfile, useClinicReport } from './ctx'
+import type { ClinicAppointment } from './types'
 
 const CLINIC_STATUS = {
   active: { label: 'Faol', tone: 'green' as const },
@@ -20,10 +20,8 @@ export default function Dashboard() {
   const today = todayISO()
   const from = addDaysISO(today, -29)
 
-  const report = useQuery({
-    queryKey: ['clinic', clinicId, 'reports', from, today],
-    queryFn: () => capi<ClinicReport>('/clinic/reports', { query: { date_from: from, date_to: today } }),
-  })
+  const report = useClinicReport(from, today)
+  const lookup = useClinicLookup()
   const appts = useQuery({
     queryKey: ['clinic', clinicId, 'appointments', today, ''],
     queryFn: () => capi<ClinicAppointment[]>('/clinic/appointments', { query: { date: today } }),
@@ -32,7 +30,7 @@ export default function Dashboard() {
   const p = profile.data
   const t = report.data?.total
   const upcoming = (appts.data ?? []).filter((a) => a.status !== 'cancelled')
-  const toCollect = upcoming.reduce((s, a) => s + BigInt((a.to_collect || '0').split('.')[0]), 0n)
+  const toCollect = upcoming.reduce((s, a) => s + a.to_collect_tiyin, 0)
 
   return (
     <div className="space-y-6">
@@ -86,10 +84,10 @@ export default function Dashboard() {
           <div className="card"><ErrorState error={report.error} onRetry={() => report.refetch()} /></div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Stat label="Tushum" value={t ? money(t.revenue) : '…'} icon={<Banknote className="h-5 w-5" />} />
-            <Stat label="Bandlik" value={t ? `${t.occupancy_pct}%` : '…'} icon={<TrendingUp className="h-5 w-5" />} tone="sky" hint={t && `${t.slots_booked} / ${t.slots_total} slot`} />
-            <Stat label="Yakunlangan qabullar" value={t ? t.completed_or_no_show - t.no_show : '…'} icon={<CalendarCheck2 className="h-5 w-5" />} tone="violet" hint={t && `${t.cancelled} ta bekor qilingan`} />
-            <Stat label="Kelmaganlar" value={t ? `${t.no_show_pct}%` : '…'} icon={<UserX className="h-5 w-5" />} tone="rose" hint={t && `${t.no_show} ta qabul`} />
+            <Stat label="Onlayn tushum" value={t ? money(t.revenue_tiyin) : '…'} icon={<Banknote className="h-5 w-5" />} hint={t && `${t.bookings} ta to'langan bron`} />
+            <Stat label="Qaytarilgan" value={t ? money(t.refunds_tiyin) : '…'} icon={<Undo2 className="h-5 w-5" />} tone="sky" hint="Bekor qilish va nizolar" />
+            <Stat label="Yakunlangan qabullar" value={t ? t.completed : '…'} icon={<CalendarCheck2 className="h-5 w-5" />} tone="violet" hint={t && `${t.cancelled} ta bekor qilingan`} />
+            <Stat label="Kelmaganlar" value={t ? t.no_show : '…'} icon={<UserX className="h-5 w-5" />} tone="rose" hint={t && t.bookings ? `${Math.round((t.no_show / t.bookings) * 100)}%` : undefined} />
           </div>
         )}
       </div>
@@ -99,7 +97,7 @@ export default function Dashboard() {
           <div>
             <h2 className="text-lg font-bold text-ink-900">Bugungi qabullar</h2>
             <p className="text-sm text-ink-500">
-              {upcoming.length} ta qabul{toCollect > 0n && <> · kassada olinadi: <b className="text-brand-700">{money(toCollect.toString())}</b></>}
+              {upcoming.length} ta qabul{toCollect > 0 && <> · kassada olinadi: <b className="text-brand-700">{money(toCollect)}</b></>}
             </p>
           </div>
           <Link to="/clinic/appointments">
@@ -115,14 +113,14 @@ export default function Dashboard() {
         ) : (
           <ul className="divide-y divide-ink-100">
             {upcoming.slice(0, 8).map((a) => (
-              <li key={a.booking_id} className="flex items-center gap-4 px-5 py-3.5">
+              <li key={a.id} className="flex items-center gap-4 px-5 py-3.5">
                 <div className="w-14 shrink-0 text-center">
                   <div className="text-lg font-extrabold tabular-nums text-ink-900">{time(a.start_at)}</div>
                   <div className="text-xs text-ink-400">{time(a.end_at)}</div>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold text-ink-900">{a.patient}</div>
-                  <div className="truncate text-sm text-ink-500">{a.doctor}{a.room && ` · ${a.room}`}</div>
+                  <div className="truncate font-semibold text-ink-900">{a.patient.full_name ?? '—'}</div>
+                  <div className="truncate text-sm text-ink-500">{lookup.doctorName(a.doctor_id) || 'Shifokor'}</div>
                 </div>
                 <StatusBadge status={a.status} />
               </li>

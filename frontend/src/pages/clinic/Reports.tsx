@@ -1,20 +1,15 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Banknote, BarChart3, CalendarCheck2, Download, TrendingUp, UserX } from 'lucide-react'
+import { Banknote, BarChart3, CalendarCheck2, Download, Undo2, UserX } from 'lucide-react'
 import { addDaysISO, money, todayISO } from '@/lib/format'
 import { Avatar, Button, EmptyState, ErrorState, Field, Input, PageHeader, Segmented, Skeleton, Stat, cx } from '@/components/ui'
-import { useClinic } from './ctx'
+import { useClinicReport } from './ctx'
 import { downloadCsv } from './shared'
-import type { ClinicReport } from './types'
 
 type Preset = '7' | '30' | '90' | 'custom'
 
-function intOf(v: string) {
-  return Number((v || '0').split('.')[0])
-}
+const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0)
 
 export default function Reports() {
-  const { capi, clinicId } = useClinic()
   const today = todayISO()
   const [preset, setPreset] = useState<Preset>('30')
   const [from, setFrom] = useState(addDaysISO(today, -29))
@@ -28,22 +23,19 @@ export default function Reports() {
     }
   }
 
-  const q = useQuery({
-    queryKey: ['clinic', clinicId, 'reports', from, to],
-    queryFn: () => capi<ClinicReport>('/clinic/reports', { query: { date_from: from, date_to: to } }),
-    enabled: !!from && !!to && from <= to,
-    placeholderData: (prev) => prev,
-  })
+  // billing: onlayn to'langan bronlar (klinika kassasidagi to'lovlar bu hisobotga kirmaydi)
+  const q = useClinicReport(from, to)
   const r = q.data
-  const doctors = [...(r?.doctors ?? [])].sort((a, b) => intOf(b.revenue) - intOf(a.revenue))
-  const maxRev = Math.max(1, ...doctors.map((d) => intOf(d.revenue)))
+  const doctors = [...(r?.doctors ?? [])].sort((a, b) => b.revenue_tiyin - a.revenue_tiyin)
+  const maxRev = Math.max(1, ...doctors.map((d) => d.revenue_tiyin))
+  const som = (t: number) => (t / 100).toFixed(2)
 
   const exportCsv = () => {
     if (!r) return
     downloadCsv(`turon-clinic-hisobot-${r.date_from}_${r.date_to}.csv`, [
-      ['Shifokor', "Tushum (so'm)", 'Slotlar', 'Band', 'Bandlik %', 'Yakunlangan+kelmagan', 'Kelmagan', 'Kelmagan %', 'Bekor qilingan'],
-      ...doctors.map((d) => [d.doctor, d.revenue, d.slots_total, d.slots_booked, d.occupancy_pct, d.completed_or_no_show, d.no_show, d.no_show_pct, d.cancelled]),
-      ['JAMI', r.total.revenue, r.total.slots_total, r.total.slots_booked, r.total.occupancy_pct, r.total.completed_or_no_show, r.total.no_show, r.total.no_show_pct, r.total.cancelled],
+      ['Shifokor', "Onlayn tushum (so'm)", "Qaytarilgan (so'm)", 'Bronlar', 'Yakunlangan', 'Kelmagan', 'Bekor qilingan'],
+      ...doctors.map((d) => [d.doctor, som(d.revenue_tiyin), som(d.refunds_tiyin), d.bookings, d.completed, d.no_show, d.cancelled]),
+      ['JAMI', som(r.total.revenue_tiyin), som(r.total.refunds_tiyin), r.total.bookings, r.total.completed, r.total.no_show, r.total.cancelled],
     ])
   }
 
@@ -51,7 +43,7 @@ export default function Reports() {
     <div>
       <PageHeader
         title="Hisobotlar"
-        subtitle="Tushum, bandlik va kelmaganlar — shifokorlar kesimida"
+        subtitle="Onlayn to'langan bronlar: tushum, qaytarishlar va kelmaganlar — shifokorlar kesimida"
         actions={<Button variant="outline" icon={<Download className="h-4 w-4" />} disabled={!r} onClick={exportCsv}>CSV yuklab olish</Button>}
       />
       <div className="card mb-5 flex flex-col gap-3 p-3 lg:flex-row lg:items-end lg:justify-between">
@@ -85,10 +77,10 @@ export default function Reports() {
       ) : !r ? null : (
         <div className={cx('space-y-6', q.isFetching && 'opacity-70')}>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Stat label="Tushum" value={money(r.total.revenue)} icon={<Banknote className="h-5 w-5" />} />
-            <Stat label="Bandlik" value={`${r.total.occupancy_pct}%`} icon={<TrendingUp className="h-5 w-5" />} tone="sky" hint={`${r.total.slots_booked} / ${r.total.slots_total} slot`} />
-            <Stat label="Yakunlangan" value={r.total.completed_or_no_show - r.total.no_show} icon={<CalendarCheck2 className="h-5 w-5" />} tone="violet" hint={`${r.total.cancelled} ta bekor qilingan`} />
-            <Stat label="Kelmaganlar" value={`${r.total.no_show_pct}%`} icon={<UserX className="h-5 w-5" />} tone="rose" hint={`${r.total.no_show} ta qabul`} />
+            <Stat label="Onlayn tushum" value={money(r.total.revenue_tiyin)} icon={<Banknote className="h-5 w-5" />} hint={`${r.total.bookings} ta to'langan bron`} />
+            <Stat label="Qaytarilgan" value={money(r.total.refunds_tiyin)} icon={<Undo2 className="h-5 w-5" />} tone="sky" />
+            <Stat label="Yakunlangan" value={r.total.completed} icon={<CalendarCheck2 className="h-5 w-5" />} tone="violet" hint={`${r.total.cancelled} ta bekor qilingan`} />
+            <Stat label="Kelmaganlar" value={`${pct(r.total.no_show, r.total.bookings)}%`} icon={<UserX className="h-5 w-5" />} tone="rose" hint={`${r.total.no_show} ta qabul`} />
           </div>
 
           {doctors.length === 0 ? (
@@ -99,11 +91,11 @@ export default function Reports() {
                 <h3 className="mb-4 font-bold text-ink-900">Shifokorlar bo'yicha tushum</h3>
                 <div className="space-y-3">
                   {doctors.map((d) => {
-                    const pct = (intOf(d.revenue) / maxRev) * 100
+                    const share = (d.revenue_tiyin / maxRev) * 100
                     return (
                       <div key={d.doctor_id} className="grid grid-cols-[minmax(0,9rem)_1fr_auto] items-center gap-3 sm:grid-cols-[minmax(0,14rem)_1fr_auto]">
                         <div className="truncate text-sm font-semibold text-ink-700">{d.doctor}</div>
-                        <svg viewBox="0 0 100 10" preserveAspectRatio="none" className="h-7 w-full overflow-visible" role="img" aria-label={`${d.doctor}: ${money(d.revenue)}`}>
+                        <svg viewBox="0 0 100 10" preserveAspectRatio="none" className="h-7 w-full overflow-visible" role="img" aria-label={`${d.doctor}: ${money(d.revenue_tiyin)}`}>
                           <defs>
                             <linearGradient id="rev-bar" x1="0" x2="1">
                               <stop offset="0" stopColor="#34d3ad" />
@@ -111,9 +103,9 @@ export default function Reports() {
                             </linearGradient>
                           </defs>
                           <rect x="0" y="0" width="100" height="10" rx="2" fill="#eceff5" />
-                          <rect x="0" y="0" width={Math.max(pct, 0.8)} height="10" rx="2" fill="url(#rev-bar)" />
+                          <rect x="0" y="0" width={Math.max(share, 0.8)} height="10" rx="2" fill="url(#rev-bar)" />
                         </svg>
-                        <div className="w-28 text-right text-sm font-bold tabular-nums text-ink-900">{money(d.revenue)}</div>
+                        <div className="w-28 text-right text-sm font-bold tabular-nums text-ink-900">{money(d.revenue_tiyin)}</div>
                       </div>
                     )
                   })}
@@ -127,8 +119,8 @@ export default function Reports() {
                       <tr>
                         <th className="px-5 py-3">Shifokor</th>
                         <th className="px-3 py-3 text-right">Tushum</th>
-                        <th className="px-3 py-3 text-right">Bandlik</th>
-                        <th className="px-3 py-3 text-right">Qabullar</th>
+                        <th className="px-3 py-3 text-right">Qaytarilgan</th>
+                        <th className="px-3 py-3 text-right">Yakunlangan</th>
                         <th className="px-3 py-3 text-right">Kelmagan</th>
                         <th className="px-5 py-3 text-right">Bekor</th>
                       </tr>
@@ -142,18 +134,10 @@ export default function Reports() {
                               <span className="font-semibold text-ink-900">{d.doctor}</span>
                             </div>
                           </td>
-                          <td className="px-3 py-3 text-right font-semibold tabular-nums">{money(d.revenue)}</td>
-                          <td className="px-3 py-3 text-right tabular-nums">
-                            <div className="flex items-center justify-end gap-2">
-                              <div className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-ink-100 sm:block">
-                                <div className="h-full rounded-full bg-sky-500" style={{ width: `${Math.min(100, d.occupancy_pct)}%` }} />
-                              </div>
-                              {d.occupancy_pct}%
-                            </div>
-                            <div className="text-xs text-ink-400">{d.slots_booked}/{d.slots_total}</div>
-                          </td>
-                          <td className="px-3 py-3 text-right tabular-nums">{d.completed_or_no_show}</td>
-                          <td className={cx('px-3 py-3 text-right tabular-nums', d.no_show_pct >= 10 && 'font-bold text-rose-600')}>{d.no_show} <span className="text-xs text-ink-400">({d.no_show_pct}%)</span></td>
+                          <td className="px-3 py-3 text-right font-semibold tabular-nums">{money(d.revenue_tiyin)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums">{money(d.refunds_tiyin)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums">{d.completed}</td>
+                          <td className={cx('px-3 py-3 text-right tabular-nums', pct(d.no_show, d.bookings) >= 10 && 'font-bold text-rose-600')}>{d.no_show} <span className="text-xs text-ink-400">({pct(d.no_show, d.bookings)}%)</span></td>
                           <td className="px-5 py-3 text-right tabular-nums">{d.cancelled}</td>
                         </tr>
                       ))}
@@ -161,9 +145,9 @@ export default function Reports() {
                     <tfoot className="bg-ink-50/80 font-bold">
                       <tr>
                         <td className="px-5 py-3">Jami</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{money(r.total.revenue)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{r.total.occupancy_pct}%</td>
-                        <td className="px-3 py-3 text-right tabular-nums">{r.total.completed_or_no_show}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">{money(r.total.revenue_tiyin)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">{money(r.total.refunds_tiyin)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">{r.total.completed}</td>
                         <td className="px-3 py-3 text-right tabular-nums">{r.total.no_show}</td>
                         <td className="px-5 py-3 text-right tabular-nums">{r.total.cancelled}</td>
                       </tr>

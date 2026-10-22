@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Banknote, DoorOpen, Phone, Search, Stethoscope, X } from 'lucide-react'
-import { money, phone, time, todayISO } from '@/lib/format'
+import { Banknote, Search, Stethoscope, X } from 'lucide-react'
+import { money, time, todayISO } from '@/lib/format'
 import { EmptyState, ErrorState, ListSkeleton, PageHeader, StatusBadge, cx } from '@/components/ui'
-import { useClinic } from './ctx'
-import { DateNav, PAYMENT_MODE, useDebounced } from './shared'
+import { useClinic, useClinicLookup } from './ctx'
+import { DateNav, useDebounced } from './shared'
 import type { ClinicAppointment } from './types'
 
 export default function Appointments() {
   const { capi, clinicId } = useClinic()
+  const lookup = useClinicLookup()
   const [date, setDate] = useState(todayISO())
   const [q, setQ] = useState('')
   const dq = useDebounced(q.trim(), 300)
@@ -19,7 +20,10 @@ export default function Appointments() {
     placeholderData: (prev) => prev,
   })
   const rows = query.data ?? []
-  const totalCollect = rows.reduce((s, a) => s + BigInt((a.to_collect || '0').split('.')[0]), 0n)
+  const totalCollect = rows.reduce((s, a) => s + a.to_collect_tiyin, 0)
+  // Onlayn to'langan qism = jami − kassada olinadigan qoldiq (booking `to_collect_tiyin`)
+  const payLabel = (a: ClinicAppointment) =>
+    a.to_collect_tiyin <= 0 ? "Onlayn to'langan" : a.to_collect_tiyin < a.total_tiyin ? "Qisman oldindan" : 'Klinikada'
 
   return (
     <div>
@@ -32,7 +36,7 @@ export default function Appointments() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Telefon, bemor ismi yoki bron raqami"
+            placeholder="Bemor ismi yoki bron raqami"
             className="field !rounded-xl !py-2.5 pl-10 pr-9"
           />
           {q && (
@@ -46,9 +50,9 @@ export default function Appointments() {
       {rows.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-3 text-sm">
           <span className="chip bg-white text-ink-700 ring-1 ring-ink-100">Jami: {rows.length}</span>
-          {totalCollect > 0n && (
+          {totalCollect > 0 && (
             <span className="chip bg-brand-50 text-brand-800 ring-1 ring-brand-100">
-              <Banknote className="h-3.5 w-3.5" /> Kassada olinadi: {money(totalCollect.toString())}
+              <Banknote className="h-3.5 w-3.5" /> Kassada olinadi: {money(totalCollect)}
             </span>
           )}
         </div>
@@ -75,7 +79,7 @@ export default function Appointments() {
                 <tr>
                   <th className="px-5 py-3">Vaqt</th>
                   <th className="px-3 py-3">Bemor</th>
-                  <th className="px-3 py-3">Shifokor / xona</th>
+                  <th className="px-3 py-3">Shifokor</th>
                   <th className="px-3 py-3">Holat</th>
                   <th className="px-3 py-3">To'lov</th>
                   <th className="px-5 py-3 text-right">Kassada</th>
@@ -83,29 +87,26 @@ export default function Appointments() {
               </thead>
               <tbody className="divide-y divide-ink-100">
                 {rows.map((a) => (
-                  <tr key={a.booking_id} className="transition hover:bg-ink-50/60">
+                  <tr key={a.id} className="transition hover:bg-ink-50/60">
                     <td className="px-5 py-3.5">
                       <div className="font-bold tabular-nums text-ink-900">{time(a.start_at)}–{time(a.end_at)}</div>
                       <div className="text-xs text-ink-400">{a.number}</div>
                     </td>
                     <td className="px-3 py-3.5">
-                      <div className="font-semibold text-ink-900">{a.patient}</div>
-                      {a.client_phone && (
-                        <a href={`tel:${a.client_phone}`} className="text-xs text-ink-500 hover:text-brand-700">{phone(a.client_phone)}</a>
-                      )}
+                      <div className="font-semibold text-ink-900">{a.patient.full_name ?? '—'}</div>
+                      <div className="text-xs text-ink-400">{a.services.map((x) => x.service_name).join(', ')}</div>
                     </td>
                     <td className="px-3 py-3.5">
-                      <div className="text-ink-800">{a.doctor}</div>
-                      <div className="text-xs text-ink-400">{a.room ?? 'Xona biriktirilmagan'}</div>
+                      <div className="text-ink-800">{lookup.doctorName(a.doctor_id) || 'Shifokor'}</div>
                     </td>
                     <td className="px-3 py-3.5"><StatusBadge status={a.status} /></td>
                     <td className="px-3 py-3.5">
-                      <div className="text-ink-700">{PAYMENT_MODE[a.payment_mode] ?? a.payment_mode}</div>
-                      <div className="text-xs text-ink-400">{money(a.total_price)}</div>
+                      <div className="text-ink-700">{payLabel(a)}</div>
+                      <div className="text-xs text-ink-400">{money(a.total_tiyin)}</div>
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      {Number(a.to_collect) > 0 ? (
-                        <span className="inline-flex rounded-xl bg-brand-50 px-3 py-1.5 font-extrabold tabular-nums text-brand-700 ring-1 ring-brand-100">{money(a.to_collect)}</span>
+                      {a.to_collect_tiyin > 0 ? (
+                        <span className="inline-flex rounded-xl bg-brand-50 px-3 py-1.5 font-extrabold tabular-nums text-brand-700 ring-1 ring-brand-100">{money(a.to_collect_tiyin)}</span>
                       ) : (
                         <span className="text-ink-300">—</span>
                       )}
@@ -119,7 +120,7 @@ export default function Appointments() {
           {/* Mobil: kartalar */}
           <div className="space-y-3 md:hidden">
             {rows.map((a) => (
-              <div key={a.booking_id} className="card p-4">
+              <div key={a.id} className="card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-lg font-extrabold tabular-nums text-ink-900">{time(a.start_at)}–{time(a.end_at)}</div>
@@ -127,20 +128,16 @@ export default function Appointments() {
                   </div>
                   <StatusBadge status={a.status} />
                 </div>
-                <div className="mt-3 font-semibold text-ink-900">{a.patient}</div>
+                <div className="mt-3 font-semibold text-ink-900">{a.patient.full_name ?? '—'}</div>
                 <div className="mt-2 space-y-1.5 text-sm text-ink-600">
-                  <div className="flex items-center gap-2"><Stethoscope className="h-4 w-4 text-ink-400" />{a.doctor}</div>
-                  {a.room && <div className="flex items-center gap-2"><DoorOpen className="h-4 w-4 text-ink-400" />{a.room}</div>}
-                  {a.client_phone && (
-                    <a href={`tel:${a.client_phone}`} className="flex items-center gap-2 text-brand-700"><Phone className="h-4 w-4" />{phone(a.client_phone)}</a>
-                  )}
+                  <div className="flex items-center gap-2"><Stethoscope className="h-4 w-4 text-ink-400" />{lookup.doctorName(a.doctor_id) || 'Shifokor'}</div>
                 </div>
                 <div className="mt-3 flex items-center justify-between rounded-2xl bg-ink-50 px-3 py-2.5 text-sm">
-                  <span className="text-ink-500">{PAYMENT_MODE[a.payment_mode] ?? a.payment_mode}</span>
-                  {Number(a.to_collect) > 0 ? (
-                    <span className="font-extrabold text-brand-700">Kassada: {money(a.to_collect)}</span>
+                  <span className="text-ink-500">{payLabel(a)}</span>
+                  {a.to_collect_tiyin > 0 ? (
+                    <span className="font-extrabold text-brand-700">Kassada: {money(a.to_collect_tiyin)}</span>
                   ) : (
-                    <span className="font-semibold text-ink-700">{money(a.total_price)}</span>
+                    <span className="font-semibold text-ink-700">{money(a.total_tiyin)}</span>
                   )}
                 </div>
               </div>

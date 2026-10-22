@@ -63,7 +63,8 @@ export default function App() {
         <Route
           path="doctor/*"
           element={
-            <RequireAuth role="doctor">
+            // Ariza (onboarding) istalgan akkauntdan; tasdiqlangan kabinet — DoctorApp ichida `doctor` roli bilan
+            <RequireAuth>
               <Lazy><DoctorApp /></Lazy>
             </RequireAuth>
           }
@@ -76,14 +77,8 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route
-          path="admin/*"
-          element={
-            <RequireAuth role="platform_admin">
-              <Lazy><AdminApp /></Lazy>
-            </RequireAuth>
-          }
-        />
+        {/* Admin — alohida login (parol + TOTP), mijoz sessiyasiga bog'liq emas */}
+        <Route path="admin/*" element={<Lazy><AdminApp /></Lazy>} />
       </Routes>
     </Lazy>
   )

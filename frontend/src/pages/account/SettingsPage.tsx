@@ -6,7 +6,7 @@ import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { phone } from '@/lib/format'
 import { useToast } from '@/lib/toast'
-import type { Preferences } from '@/lib/types'
+import type { Me, Preferences } from '@/lib/types'
 import { Badge, Button, ConfirmDialog, Input, PageHeader, Segmented, Skeleton, Toggle } from '@/components/ui'
 
 export default function SettingsPage() {
@@ -18,9 +18,16 @@ export default function SettingsPage() {
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0)
   const [typed, setTyped] = useState('')
 
-  const prefs = useQuery({ queryKey: ['preferences'], queryFn: () => api<Preferences>('/accounts/me/preferences') })
+  const prefs = useQuery({ queryKey: ['preferences'], queryFn: () => api<Preferences>('/notifications/preferences') })
+  // Til — akkaunt sozlamasi (user-service), bildirishnomalar shu tilda
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/users/me') })
+  const lang = useMutation({
+    mutationFn: (preferred_language: string) => api<Me>('/users/me', { method: 'PATCH', body: { preferred_language } }),
+    onSuccess: (m) => qc.setQueryData(['me'], m),
+    onError: (e) => toast.error(e),
+  })
   const save = useMutation({
-    mutationFn: (patch: Partial<Preferences>) => api<Preferences>('/accounts/me/preferences', { method: 'PATCH', body: patch }),
+    mutationFn: (patch: Partial<Preferences>) => api<Preferences>('/notifications/preferences', { method: 'PATCH', body: patch }),
     onMutate: async (patch) => {
       // Optimistik: toggle darhol o'zgaradi, xato bo'lsa qaytadi
       const prev = qc.getQueryData<Preferences>(['preferences'])
@@ -35,13 +42,13 @@ export default function SettingsPage() {
   })
 
   const tg = useMutation({
-    mutationFn: () => api<{ url: string; linked: boolean }>('/accounts/me/telegram/link'),
+    mutationFn: () => api<{ url: string; linked: boolean }>('/telegram/link-token', { method: 'POST' }),
     onSuccess: (r) => window.open(r.url, '_blank', 'noopener'),
     onError: (e) => toast.error(e),
   })
 
   const del = useMutation({
-    mutationFn: () => api('/accounts/me/delete', { method: 'POST' }),
+    mutationFn: () => api('/users/me', { method: 'DELETE' }),
     onSuccess: async () => {
       toast.success("Akkaunt o'chirildi")
       await logout()
@@ -86,8 +93,8 @@ export default function SettingsPage() {
 
       <section className="card p-6">
         <h2 className="mb-4 flex items-center gap-2 font-bold text-ink-900"><Globe className="h-5 w-5 text-brand-600" /> Til</h2>
-        {p && (
-          <Segmented value={p.language} onChange={(v) => save.mutate({ language: v })} options={[{ value: 'uz', label: "O'zbekcha" }, { value: 'ru', label: 'Русский' }]} />
+        {me.data && (
+          <Segmented value={me.data.preferred_language} onChange={(v) => lang.mutate(v)} options={[{ value: 'uz', label: "O'zbekcha" }, { value: 'ru', label: 'Русский' }]} />
         )}
         <p className="mt-2 text-sm text-ink-500">SMS va bildirishnomalar shu tilda yuboriladi.</p>
       </section>

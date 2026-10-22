@@ -31,45 +31,63 @@ scrape_configs:
         regex: "([^:]+):.*"
         target_label: service
 
-  # Outbox relay va event consumer konteynerlari /metrics ni 9100 portda beradi (WORKER_METRICS_PORT).
-  # Ro'yxat: publisher servislar → <svc>-outbox-relay, consumer servislar → <svc>-event-consumer.
+  # Fon konteynerlari /metrics ni 9100 portda beradi (WORKER_METRICS_PORT / WORKER_METRICS_ADDR):
+  # <svc>-outbox-relay (publisher), <svc>-event-consumer (consumer), <svc>-scheduler / -dispatcher (davriy ishlar).
+  # Ro'yxat har servisning docker-compose.yml iga mos; yangi worker qo'shilsa — shu yerga ham.
   - job_name: medbron-workers
     static_configs:
       - targets:
-          - auth-service-outbox-relay:9100
-          - user-service-outbox-relay:9100
-          - admin-service-outbox-relay:9100
-          - file-service-outbox-relay:9100
-          - catalog-service-outbox-relay:9100
-          - schedule-service-outbox-relay:9100
-          - pricing-service-outbox-relay:9100
-          - booking-service-outbox-relay:9100
-          - payment-service-outbox-relay:9100
-          - billing-service-outbox-relay:9100
-          - review-service-outbox-relay:9100
-          - dispute-service-outbox-relay:9100
-          - auth-service-event-consumer:9100
-          - user-service-event-consumer:9100
           - admin-service-event-consumer:9100
-          - notification-service-event-consumer:9100
-          - catalog-service-event-consumer:9100
-          - schedule-service-event-consumer:9100
-          - pricing-service-event-consumer:9100
-          - booking-service-event-consumer:9100
-          - payment-service-event-consumer:9100
-          - billing-service-event-consumer:9100
-          - review-service-event-consumer:9100
-          - dispute-service-event-consumer:9100
-          - search-service-event-consumer:9100
+          - admin-service-outbox-relay:9100
           - analytics-service-event-consumer:9100
+          - auth-service-event-consumer:9100
+          - auth-service-outbox-relay:9100
+          - auth-service-scheduler:9100
+          - billing-service-event-consumer:9100
+          - billing-service-outbox-relay:9100
+          - billing-service-scheduler:9100
+          - booking-service-event-consumer:9100
+          - booking-service-outbox-relay:9100
+          - booking-service-scheduler:9100
+          - catalog-service-event-consumer:9100
+          - catalog-service-outbox-relay:9100
+          - catalog-service-scheduler:9100
+          - dispute-service-event-consumer:9100
+          - dispute-service-outbox-relay:9100
+          - dispute-service-scheduler:9100
+          - file-service-outbox-relay:9100
+          - file-service-scheduler:9100
+          - notification-service-dispatcher:9100
+          - notification-service-event-consumer:9100
+          - payment-service-event-consumer:9100
+          - payment-service-outbox-relay:9100
+          - payment-service-scheduler:9100
+          - pricing-service-event-consumer:9100
+          - pricing-service-outbox-relay:9100
+          - pricing-service-scheduler:9100
+          - review-service-event-consumer:9100
+          - review-service-outbox-relay:9100
+          - schedule-service-event-consumer:9100
+          - schedule-service-outbox-relay:9100
+          - schedule-service-scheduler:9100
+          - search-service-event-consumer:9100
+          - search-service-scheduler:9100
+          - user-service-event-consumer:9100
+          - user-service-outbox-relay:9100
+          - ws-gateway-event-consumer:9100
     relabel_configs:
       - source_labels: [__address__]
-        regex: "(.+-service)-(outbox-relay|event-consumer):.*"
+        regex: "(.+)-(outbox-relay|event-consumer|scheduler|dispatcher):.*"
         target_label: service
       - source_labels: [__address__]
-        regex: "(.+-service)-(outbox-relay|event-consumer):.*"
+        regex: "(.+)-(outbox-relay|event-consumer|scheduler|dispatcher):.*"
         target_label: worker
         replacement: "$2"
+
+  # Kong: status listen (8100) — kong.*.yml dagi `prometheus` plugin metrikalari
+  - job_name: kong
+    static_configs:
+      - targets: [medbron-kong:8100]
 
   - job_name: rabbitmq
     metrics_path: /metrics/per-object

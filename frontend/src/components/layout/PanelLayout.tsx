@@ -14,8 +14,8 @@ export interface PanelNavItem {
   badge?: number
 }
 
-/** Shifokor kabineti, klinika paneli va moderatsiya uchun umumiy maket. */
-export function PanelLayout({ title, nav, banner, children }: { title: string; nav: PanelNavItem[]; banner?: ReactNode; children?: ReactNode }) {
+/** Shifokor kabineti, klinika paneli va moderatsiya uchun umumiy maket. `menu` — o'ng yuqori burchak (standart: UserMenu). */
+export function PanelLayout({ title, nav, banner, menu, children }: { title: string; nav: PanelNavItem[]; banner?: ReactNode; menu?: ReactNode; children?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const loc = useLocation()
   useEffect(() => setOpen(false), [loc.pathname])
@@ -81,7 +81,7 @@ export function PanelLayout({ title, nav, banner, children }: { title: string; n
               <Menu className="h-6 w-6" />
             </button>
             <div className="hidden text-sm font-semibold text-ink-500 lg:block">{title}</div>
-            <UserMenu />
+            {menu ?? <UserMenu />}
           </div>
         </header>
         {banner}

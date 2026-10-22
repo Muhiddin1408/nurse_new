@@ -8,7 +8,7 @@ export const WEEKDAYS = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Jum
 export const WEEKDAYS_SHORT = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya']
 
 /** Decimal string → "150 000 so'm". Float'ga aylantirilmaydi — butun qism matn sifatida guruhlanadi. */
-export function money(value: string | number | null | undefined, withCurrency = true): string {
+function formatDecimal(value: string | null | undefined, withCurrency = true): string {
   if (value === null || value === undefined || value === '') return '—'
   const s = String(value)
   const neg = s.startsWith('-')
@@ -18,18 +18,27 @@ export function money(value: string | number | null | undefined, withCurrency = 
   return `${neg ? '−' : ''}${grouped}${tail}${withCurrency ? " so'm" : ''}`
 }
 
-/** Decimal stringlarni float'siz qo'shish (tiyinda). */
-export function sumMoney(values: string[]): string {
-  let tiyin = 0n
-  for (const v of values) {
-    const neg = v.startsWith('-')
-    const [i, f = ''] = v.replace('-', '').split('.')
-    const t = BigInt(i || '0') * 100n + BigInt((f + '00').slice(0, 2))
-    tiyin += neg ? -t : t
-  }
-  const neg = tiyin < 0n
-  const abs = neg ? -tiyin : tiyin
-  return `${neg ? '-' : ''}${abs / 100n}.${String(abs % 100n).padStart(2, '0')}`
+/** API puli — tiyin (butun son, ADR-0007) → "150 000 so'm" (tiyin qismi bo'lsa ",50"). */
+export function money(tiyin: number | null | undefined, withCurrency = true): string {
+  if (tiyin === null || tiyin === undefined) return '—'
+  const neg = tiyin < 0
+  const abs = Math.abs(Math.trunc(tiyin))
+  return formatDecimal(`${neg ? '-' : ''}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`, withCurrency)
+}
+
+/** Foydalanuvchi kiritgan so'm ("150000", "150 000,50") → tiyin. Noto'g'ri bo'lsa NaN. */
+export function toTiyin(input: string | number): number {
+  const s = String(input).replace(/\s/g, '').replace(',', '.')
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return NaN
+  const [i, f = ''] = s.split('.')
+  return Number(i) * 100 + Number((f + '00').slice(0, 2))
+}
+
+/** Tiyin → forma maydoni uchun so'm matni ("150000" yoki "150000.50"). */
+export function tiyinToInput(tiyin: number | null | undefined): string {
+  if (tiyin === null || tiyin === undefined) return ''
+  const t = Math.trunc(tiyin)
+  return t % 100 ? `${Math.floor(t / 100)}.${String(t % 100).padStart(2, '0')}` : String(t / 100)
 }
 
 export function tz(iso: string | Date) {

@@ -4,11 +4,17 @@ import { AlertTriangle, CheckCircle2, DoorOpen, ListChecks } from 'lucide-react'
 import { relativeDateTime } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import { Avatar, EmptyState, ErrorState, ListSkeleton, Modal, PageHeader, Button, cx } from '@/components/ui'
-import { useClinic } from './ctx'
+import { useClinic, useClinicLookup } from './ctx'
 import { WEEKDAY_NAMES, hhmm } from './shared'
 import type { ClinicRule, Room } from './types'
 
-interface AssignResult { moved: number; blocked: number; conflicts: string[] }
+interface AssignResult { moved: number; blocked: number; conflicts: string[] | null }
+
+/** schedule-service `GET /v1/clinic/{id}/rules` qatori */
+interface RawRule {
+  doctor_id: string
+  rule: { id: string; weekday: number; start_time: string; end_time: string; room_id: string | null }
+}
 
 function toMin(t: string) {
   const [h, m] = t.split(':').map(Number)
@@ -22,7 +28,19 @@ export default function Rules() {
   const [result, setResult] = useState<{ rule: ClinicRule; res: AssignResult } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
-  const rules = useQuery({ queryKey: ['clinic', clinicId, 'rules'], queryFn: () => capi<ClinicRule[]>('/clinic/rules') })
+  const lookup = useClinicLookup()
+  const raw = useQuery({ queryKey: ['clinic', clinicId, 'rules'], queryFn: () => capi<RawRule[]>('/clinic/rules') })
+  const data = raw.data?.map<ClinicRule>(({ doctor_id, rule }) => ({
+    rule_id: rule.id,
+    doctor_id,
+    doctor: lookup.doctorName(doctor_id) || 'Shifokor',
+    weekday: rule.weekday,
+    start_time: rule.start_time,
+    end_time: rule.end_time,
+    room_id: rule.room_id,
+    room: lookup.roomName(rule.room_id),
+  }))
+  const rules = { ...raw, data }
   const rooms = useQuery({ queryKey: ['clinic', clinicId, 'rooms'], queryFn: () => capi<Room[]>('/clinic/rooms') })
 
   const assign = useMutation({
@@ -31,7 +49,7 @@ export default function Rules() {
     onMutate: ({ rule }) => setBusy(rule.rule_id),
     onSettled: () => setBusy(null),
     onSuccess: (res, { rule }) => {
-      if (res.conflicts.length || res.blocked) setResult({ rule, res })
+      if (res.conflicts?.length || res.blocked) setResult({ rule, res })
       else toast.success(`Xona biriktirildi · ${res.moved} ta slot ko'chirildi`)
       qc.invalidateQueries({ queryKey: ['clinic', clinicId, 'rules'] })
       qc.invalidateQueries({ queryKey: ['clinic', clinicId, 'schedule'] })
@@ -128,7 +146,7 @@ export default function Rules() {
             {result.res.blocked > 0 && (
               <div className="flex items-center gap-2 text-amber-700"><AlertTriangle className="h-5 w-5" /> {result.res.blocked} ta bo'sh slot yopildi (xona band)</div>
             )}
-            {result.res.conflicts.length > 0 && (
+            {!!result.res.conflicts?.length && (
               <div className="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-200">
                 <div className="mb-2 font-bold text-rose-800">To'qnashuvlar ({result.res.conflicts.length})</div>
                 <ul className="space-y-1 text-rose-700">

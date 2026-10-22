@@ -3,28 +3,41 @@ import { useInfiniteQuery } from '@tanstack/react-query'
 import { Building2, ChevronRight, House, UserRound } from 'lucide-react'
 import { api } from '@/lib/api'
 import { dayNum, dateShort, money, time, weekdayShort } from '@/lib/format'
-import type { Booking } from '@/lib/types'
+import { useDoctor } from '@/lib/queries'
+import type { Booking, BookingPage, Clinic } from '@/lib/types'
 import { StatusBadge, cx } from '@/components/ui'
 
-export const ACTIVE_STATUSES = 'pending_payment,confirmed'
+export const ACTIVE_STATUSES = 'pending_payment,confirmed,in_progress'
 export const HISTORY_STATUSES = 'completed,cancelled,expired,no_show'
-
-interface Page {
-  next: string | null
-  results: Booking[]
-}
 
 export function useMyBookings(status: string, pageSize = 20) {
   return useInfiniteQuery({
     queryKey: ['bookings', 'mine', status, pageSize],
     initialPageParam: '',
-    queryFn: ({ pageParam }) => api<Page>('/booking/bookings/mine', { query: { status, page_size: pageSize, cursor: pageParam || undefined } }),
-    // Cursor paginatsiya: `next` URL ichidagi `cursor` qiymati
-    getNextPageParam: (last) => (last.next ? new URL(last.next, location.origin).searchParams.get('cursor') ?? undefined : undefined),
+    queryFn: ({ pageParam }) => api<BookingPage>('/bookings/mine', { query: { status, limit: pageSize, cursor: pageParam || undefined } }),
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   })
 }
 
+/**
+ * Bronda faqat ID'lar (booking-service) — shifokor ismi va klinika (nomi, manzili) catalog'dan, keshdan.
+ * Bemor va uy manzili — bron paytidagi nusxa (`b.patient`, `b.address`).
+ */
+export function useBookingView(b: Booking | undefined) {
+  const doctor = useDoctor(b?.doctor_id)
+  const clinic: Clinic | undefined = b?.clinic_id ? doctor.data?.clinics.find((c) => c.id === b.clinic_id) : undefined
+  const a = b?.address
+  return {
+    doctorName: doctor.data?.full_name ?? '',
+    clinicName: clinic?.name ?? '',
+    clinicAddress: clinic ? [clinic.city, clinic.street].filter(Boolean).join(', ') : '',
+    addressText: a ? [a.city, a.street, a.apartment ? `kv. ${a.apartment}` : ''].filter(Boolean).join(', ') : '',
+    patientName: (b?.patient?.full_name as string | undefined) ?? '',
+  }
+}
+
 export function BookingCard({ b }: { b: Booking }) {
+  const v = useBookingView(b)
   const start = b.start_at
   const pending = b.status === 'pending_payment'
   return (
@@ -41,7 +54,7 @@ export function BookingCard({ b }: { b: Booking }) {
           <StatusBadge status={b.status} />
           <span className="text-xs font-semibold text-ink-400">№ {b.number}</span>
         </div>
-        <div className="mt-1.5 truncate font-bold text-ink-900">{b.doctor_name ?? 'Shifokor'}</div>
+        <div className="mt-1.5 truncate font-bold text-ink-900">{v.doctorName || 'Shifokor'}</div>
         <div className="truncate text-sm text-ink-500">{b.items.map((i) => i.service_name).join(', ')}</div>
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-500">
           {start && (
@@ -52,17 +65,17 @@ export function BookingCard({ b }: { b: Booking }) {
           )}
           <span className="inline-flex items-center gap-1">
             {b.place === 'home' ? <House className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />}
-            <span className="max-w-[180px] truncate">{b.place === 'home' ? 'Uyga chaqiruv' : b.clinic_name || 'Klinikada'}</span>
+            <span className="max-w-[180px] truncate">{b.place === 'home' ? 'Uyga chaqiruv' : v.clinicName || 'Klinikada'}</span>
           </span>
-          {b.patient_name && (
+          {v.patientName && (
             <span className="inline-flex items-center gap-1">
-              <UserRound className="h-3.5 w-3.5" /> {b.patient_name}
+              <UserRound className="h-3.5 w-3.5" /> {v.patientName}
             </span>
           )}
         </div>
       </div>
       <div className="flex flex-col items-end justify-between">
-        <span className="whitespace-nowrap font-bold text-ink-900">{money(b.total_price)}</span>
+        <span className="whitespace-nowrap font-bold text-ink-900">{money(b.total_tiyin)}</span>
         <ChevronRight className="h-5 w-5 text-ink-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600" />
       </div>
     </Link>

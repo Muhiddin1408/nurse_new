@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Building2, Lock, MapPin, Save } from 'lucide-react'
+import { Building2, ImagePlus, Lock, MapPin, Save } from 'lucide-react'
 import { ApiError } from '@/lib/api'
+import { uploadFile } from '@/lib/files'
 import { useToast } from '@/lib/toast'
 import { Button, Field, Input, PageHeader, Textarea, Toggle, cx } from '@/components/ui'
 import { useClinic, useClinicProfile } from './ctx'
@@ -20,6 +21,8 @@ export default function Profile() {
   const [description, setDescription] = useState('')
   const [phoneVal, setPhone] = useState('')
   const [photo, setPhoto] = useState('')
+  const [photoFileId, setPhotoFileId] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [hours, setHours] = useState<Hours>({})
 
   useEffect(() => {
@@ -27,13 +30,14 @@ export default function Profile() {
     setDescription(p.description || '')
     setPhone(p.phone || '')
     setPhoto(p.photo_url || '')
+    setPhotoFileId(null)
     const h: Hours = {}
     for (let i = 0; i < 7; i++) h[String(i)] = p.working_hours?.[String(i)] ?? null
     setHours(h)
   }, [p])
 
   const save = useMutation({
-    mutationFn: () => capi<ClinicProfile>('/clinic/profile', { method: 'PATCH', body: { description, phone: phoneVal.trim(), photo_url: photo.trim(), working_hours: hours } }),
+    mutationFn: () => capi<ClinicProfile>('/clinic/profile', { method: 'PATCH', body: { description, phone: phoneVal.trim(), working_hours: hours, ...(photoFileId ? { photo_file_id: photoFileId } : {}) } }),
     onSuccess: (data) => {
       qc.setQueryData(['clinic', clinicId, 'profile'], data)
       toast.success('Profil saqlandi')
@@ -41,6 +45,20 @@ export default function Profile() {
     onError: (e) => toast.error(e),
   })
   const fe = save.error instanceof ApiError ? save.error.fields : {}
+
+  // file-service presigned yuklash → `photo_file_id` (saqlashda catalog biriktiradi)
+  const pickPhoto = async (file?: File) => {
+    if (!file) return
+    setUploading(true)
+    try {
+      setPhotoFileId(await uploadFile(file, 'clinic_photo'))
+      setPhoto(URL.createObjectURL(file))
+    } catch (e) {
+      toast.error(e)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   if (!p) return null
   const setDay = (d: string, v: [string, string] | null) => setHours((h) => ({ ...h, [d]: v }))
@@ -51,7 +69,7 @@ export default function Profile() {
       <PageHeader
         title="Klinika profili"
         subtitle="Mijozlar ko'radigan ma'lumotlar"
-        actions={<Button icon={<Save className="h-4 w-4" />} loading={save.isPending} disabled={badHours} onClick={() => save.mutate()}>Saqlash</Button>}
+        actions={<Button icon={<Save className="h-4 w-4" />} loading={save.isPending} disabled={badHours || uploading} onClick={() => save.mutate()}>Saqlash</Button>}
       />
       <div className="grid gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-3">
@@ -64,8 +82,12 @@ export default function Profile() {
               <Field label="Telefon" error={fe.phone}>
                 <Input value={phoneVal} onChange={(e) => setPhone(e.target.value)} placeholder="+998712000101" />
               </Field>
-              <Field label="Rasm havolasi (URL)" error={fe.photo_url}>
-                <Input value={photo} onChange={(e) => setPhoto(e.target.value)} placeholder="https://…" />
+              <Field label="Rasm" error={fe.photo_file_id} hint="JPG, PNG yoki WEBP · 10 MB gacha">
+                <label className={cx('field flex cursor-pointer items-center justify-center gap-2 !rounded-xl !py-2.5 text-sm font-semibold text-ink-700 hover:bg-ink-50', uploading && 'pointer-events-none opacity-60')}>
+                  <ImagePlus className="h-4 w-4" />
+                  {uploading ? 'Yuklanmoqda…' : photoFileId ? 'Yangi rasm tanlandi' : 'Rasm yuklash'}
+                  <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = '' }} />
+                </label>
               </Field>
             </div>
           </div>

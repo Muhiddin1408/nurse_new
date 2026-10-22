@@ -13,9 +13,8 @@ import {
   Tags,
   ArrowLeftRight,
 } from 'lucide-react'
-import { ApiError } from '@/lib/api'
 import { PanelLayout, type PanelNavItem } from '@/components/layout/PanelLayout'
-import { Button, ErrorState, Field, Input, Modal, Skeleton, Spinner } from '@/components/ui'
+import { Badge, Button, ErrorState, Modal, Skeleton, Spinner, cx } from '@/components/ui'
 import { ClinicProvider, useClinic, useClinicProfile } from './ctx'
 import Dashboard from './Dashboard'
 import Appointments from './Appointments'
@@ -41,51 +40,42 @@ const NAV: PanelNavItem[] = [
   { to: '/clinic/profile', label: 'Klinika profili', icon: Building2 },
 ]
 
-function ClinicSwitcherModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { clinicId, setClinicId } = useClinic()
-  const [val, setVal] = useState(clinicId)
+/** Admin boshqaradigan klinikalar ro'yxati (catalog `GET /v1/clinic/mine`) — bosilgani faol bo'ladi. */
+function ClinicPicker({ onPicked }: { onPicked?: () => void }) {
+  const { clinicId, setClinicId, mine } = useClinic()
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Klinikani tanlash"
-      size="sm"
-      footer={
-        <>
-          <Button variant="ghost" onClick={() => { setClinicId(''); onClose() }}>
-            Tozalash
-          </Button>
-          <Button onClick={() => { setClinicId(val.trim()); onClose() }} disabled={!val.trim()}>
-            Saqlash
-          </Button>
-        </>
-      }
-    >
-      <ClinicIdForm value={val} onChange={setVal} />
-    </Modal>
+    <ul className="space-y-2">
+      {(mine ?? []).map((c) => (
+        <li key={c.id}>
+          <button
+            type="button"
+            onClick={() => { setClinicId(c.id); onPicked?.() }}
+            className={cx(
+              'flex w-full items-center gap-3 rounded-2xl p-3 text-left ring-1 transition hover:bg-ink-50',
+              c.id === clinicId ? 'bg-brand-50/60 ring-brand-300' : 'ring-ink-100',
+            )}
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+              <Building2 className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold text-ink-900">{c.name}</span>
+              <span className="block truncate text-sm text-ink-500">{c.city}, {c.street}</span>
+            </span>
+            {c.status !== 'active' && <Badge tone="amber">{c.status === 'draft' ? 'Qoralama' : "To'xtatilgan"}</Badge>}
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 
-function ClinicIdForm({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="space-y-3">
-      <p className="text-sm leading-relaxed text-ink-500">
-        Siz bir nechta klinikani boshqarasiz. Ishlamoqchi bo'lgan klinika identifikatorini (UUID) kiriting — uni platforma administratoridan olishingiz mumkin.
-      </p>
-      <Field label="Klinika ID">
-        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="4f0414e9-9bd8-4786-..." className="font-mono text-sm" />
-      </Field>
-    </div>
-  )
-}
-
-/** Klinika aniqlanmaguncha (409/404) panelni ochmaydi. */
+/** Klinika aniqlanmaguncha panelni ochmaydi: ro'yxat yuklanadi → bitta bo'lsa avtomatik, bir nechta — tanlov. */
 function ClinicGate({ children }: { children: ReactNode }) {
-  const { clinicId, setClinicId } = useClinic()
+  const { clinicId, mine, mineLoading } = useClinic()
   const q = useClinicProfile()
-  const [val, setVal] = useState('')
 
-  if (q.isLoading)
+  if (mineLoading || (clinicId && q.isLoading))
     return (
       <div className="space-y-4">
         <Skeleton className="h-36 rounded-3xl" />
@@ -97,29 +87,25 @@ function ClinicGate({ children }: { children: ReactNode }) {
       </div>
     )
 
-  if (q.error instanceof ApiError && (q.error.status === 409 || q.error.status === 404)) {
-    const notFound = q.error.status === 404
+  if (!clinicId) {
+    const none = !mine?.length
     return (
       <div className="mx-auto mt-10 max-w-md">
         <div className="card p-7">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-50 to-sky-50 text-brand-600 ring-1 ring-brand-100">
             <Building2 className="h-7 w-7" />
           </div>
-          <h2 className="text-xl font-bold">{notFound ? 'Klinika topilmadi' : 'Klinikani tanlang'}</h2>
-          {notFound && clinicId && <p className="mt-1 text-sm text-rose-600">Saqlangan ID sizning klinikalaringizga tegishli emas.</p>}
-          <div className="mt-4">
-            <ClinicIdForm value={val} onChange={setVal} />
-          </div>
-          <div className="mt-5 flex gap-2">
-            {clinicId && (
-              <Button variant="outline" onClick={() => setClinicId('')}>
-                Avtomatik
-              </Button>
-            )}
-            <Button block onClick={() => setClinicId(val.trim())} disabled={!val.trim()}>
-              Davom etish
-            </Button>
-          </div>
+          <h2 className="text-xl font-bold">{none ? 'Klinika biriktirilmagan' : 'Klinikani tanlang'}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-ink-500">
+            {none
+              ? "Sizning hisobingizga hali birorta klinika biriktirilmagan. Platforma administratoriga murojaat qiling."
+              : "Siz bir nechta klinikani boshqarasiz — qaysi biri bilan ishlashni tanlang."}
+          </p>
+          {!none && (
+            <div className="mt-5">
+              <ClinicPicker />
+            </div>
+          )}
         </div>
       </div>
     )
@@ -131,7 +117,7 @@ function ClinicGate({ children }: { children: ReactNode }) {
 
 function ClinicBanner() {
   const q = useClinicProfile()
-  const { clinicId } = useClinic()
+  const { mine } = useClinic()
   const [open, setOpen] = useState(false)
   if (!q.data) return null
   return (
@@ -143,12 +129,14 @@ function ClinicBanner() {
         <span className="truncate font-bold text-ink-900">{q.data.name}</span>
         <span className="hidden truncate text-ink-400 sm:inline">· {q.data.city}</span>
       </div>
-      {(clinicId || q.isFetching) && (
+      {(mine?.length ?? 0) > 1 && (
         <Button variant="ghost" size="sm" onClick={() => setOpen(true)} icon={q.isFetching ? <Spinner className="h-4 w-4" /> : <ArrowLeftRight className="h-4 w-4" />}>
           Almashtirish
         </Button>
       )}
-      <ClinicSwitcherModal open={open} onClose={() => setOpen(false)} />
+      <Modal open={open} onClose={() => setOpen(false)} title="Klinikani tanlash" size="sm">
+        <ClinicPicker onPicked={() => setOpen(false)} />
+      </Modal>
     </div>
   )
 }

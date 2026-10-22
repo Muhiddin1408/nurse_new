@@ -1,17 +1,21 @@
 import type { Tokens } from './types'
 
-const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/v1'
 const STORAGE_KEY = 'turon.auth'
+const ADMIN_KEY = 'turon.admin'
 
 export class ApiError extends Error {
   status: number
+  /** Servis xato kodi (`SLOT_TAKEN`, `NOT_PAYABLE`, ...) — bo'lmasa bo'sh */
+  code: string
   detail: string
   fields: Record<string, string>
   data: unknown
   constructor(status: number, data: unknown) {
-    const { detail, fields } = parseApiError(status, data)
+    const { code, detail, fields } = parseApiError(status, data)
     super(detail)
     this.status = status
+    this.code = code
     this.detail = detail
     this.fields = fields
     this.data = data
@@ -29,11 +33,26 @@ const STATUS_TEXT: Record<number, string> = {
   503: "Xizmat vaqtincha ishlamayapti. Birozdan so'ng urinib ko'ring.",
 }
 
-/** `{detail}` va `{field: [...]}` ikkala shaklni bitta ko'rinishga keltiradi. */
-export function parseApiError(status: number, data: unknown): { detail: string; fields: Record<string, string> } {
+/**
+ * Servislar xatosi: `{"detail": {"code", "message", "errors": [{loc, msg}]}}` (medbron_common.errors).
+ * Eski `{detail}` / `{field: [...]}` shakllari ham qabul qilinadi.
+ */
+export function parseApiError(status: number, data: unknown): { code: string; detail: string; fields: Record<string, string> } {
   const fields: Record<string, string> = {}
   let detail = ''
-  if (data && typeof data === 'object' && !Array.isArray(data)) {
+  let code = ''
+  const d = data && typeof data === 'object' ? (data as Record<string, unknown>).detail : undefined
+  if (d && typeof d === 'object' && !Array.isArray(d)) {
+    const e = d as { code?: unknown; message?: unknown; errors?: unknown }
+    code = typeof e.code === 'string' ? e.code : ''
+    detail = typeof e.message === 'string' ? e.message : ''
+    if (Array.isArray(e.errors)) {
+      for (const err of e.errors as { loc?: unknown[]; msg?: string }[]) {
+        const field = Array.isArray(err.loc) ? String(err.loc[err.loc.length - 1]) : ''
+        if (field && err.msg && !fields[field]) fields[field] = err.msg
+      }
+    }
+  } else if (data && typeof data === 'object' && !Array.isArray(data)) {
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       const msg = Array.isArray(v) ? v.map(String).join(' ') : typeof v === 'string' ? v : ''
       if (!msg) continue
@@ -46,7 +65,7 @@ export function parseApiError(status: number, data: unknown): { detail: string; 
   if (!detail) {
     detail = Object.values(fields)[0] || STATUS_TEXT[status] || (status >= 500 ? STATUS_TEXT[500] : 'Xatolik yuz berdi')
   }
-  return { detail, fields }
+  return { code, detail, fields }
 }
 
 export function errText(e: unknown): string {
@@ -100,7 +119,7 @@ async function refreshTokens(): Promise<boolean> {
     const current = tokens.refresh
     refreshing = (async () => {
       try {
-        const res = await fetch(`${BASE}/accounts/auth/token/refresh`, {
+        const res = await fetch(`${BASE}/auth/token/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh: current }),
@@ -122,6 +141,35 @@ async function refreshTokens(): Promise<boolean> {
   return refreshing
 }
 
+// ---- admin sessiyasi (alohida identity, ADR-0005) ---------------------------
+// Admin token'i mijoz/shifokor sessiyasidan ALOHIDA saqlanadi; refresh yo'q — muddati tugasa qayta login (TOTP).
+let adminToken: string | null = readAdmin()
+let onAdminLost: (() => void) | null = null
+
+function readAdmin(): string | null {
+  try {
+    return localStorage.getItem(ADMIN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setAdminToken(t: string | null) {
+  adminToken = t
+  try {
+    if (t) localStorage.setItem(ADMIN_KEY, t)
+    else localStorage.removeItem(ADMIN_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+export function getAdminToken() {
+  return adminToken
+}
+export function bindAdminLost(lost: () => void) {
+  onAdminLost = lost
+}
+
 export type Query = Record<string, string | number | boolean | null | undefined>
 
 export interface RequestOpts {
@@ -130,6 +178,8 @@ export interface RequestOpts {
   query?: Query
   headers?: Record<string, string>
   auth?: boolean
+  /** `admin` — admin token bilan (`/v1/admin/*`) */
+  realm?: 'user' | 'admin'
   signal?: AbortSignal
 }
 
@@ -146,13 +196,15 @@ function buildUrl(path: string, query?: Query) {
 }
 
 export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Promise<T> {
-  const { method = 'GET', body, query, headers = {}, auth = true, signal } = opts
+  const { method = 'GET', body, query, headers = {}, auth = true, realm = 'user', signal } = opts
+  const isAdmin = realm === 'admin'
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData
 
   const doFetch = () => {
     const h: Record<string, string> = { Accept: 'application/json', 'Accept-Language': 'uz', ...headers }
     if (!isForm && body !== undefined) h['Content-Type'] = 'application/json'
-    if (auth && tokens?.access) h.Authorization = `Bearer ${tokens.access}`
+    const bearer = isAdmin ? adminToken : tokens?.access
+    if (auth && bearer) h.Authorization = `Bearer ${bearer}`
     return fetch(buildUrl(path, query), {
       method,
       headers: h,
@@ -164,7 +216,7 @@ export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Pr
   let res: Response
   try {
     res = await doFetch()
-    if (res.status === 401 && auth && tokens?.refresh) {
+    if (res.status === 401 && auth && !isAdmin && tokens?.refresh) {
       const ok = await refreshTokens()
       if (ok) res = await doFetch()
     }
@@ -177,7 +229,10 @@ export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Pr
   const ct = res.headers.get('content-type') || ''
   const data = ct.includes('json') ? await res.json().catch(() => null) : await res.text().catch(() => null)
   if (!res.ok) {
-    if (res.status === 401 && auth && tokens) onAuthLost?.()
+    if (res.status === 401 && auth) {
+      if (isAdmin) onAdminLost?.()
+      else if (tokens) onAuthLost?.()
+    }
     throw new ApiError(res.status, data)
   }
   return data as T

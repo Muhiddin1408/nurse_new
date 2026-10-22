@@ -16,7 +16,7 @@ export default function AddressesPage() {
   const [del, setDel] = useState<Address | null>(null)
 
   const remove = useMutation({
-    mutationFn: (id: string) => api(`/patient/addresses/${id}/`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api(`/users/me/addresses/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['addresses'] })
       toast.success("Manzil o'chirildi")

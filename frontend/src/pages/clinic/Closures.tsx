@@ -4,17 +4,34 @@ import { AlertTriangle, CalendarOff, Plus, Trash2 } from 'lucide-react'
 import { addDaysISO, dateLong, dayNum, monthName, relativeDateTime, todayISO, weekday } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import { Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, ListSkeleton, Modal, PageHeader } from '@/components/ui'
-import { useClinic } from './ctx'
-import type { Closure } from './types'
+import { useClinic, useClinicLookup } from './ctx'
+import type { ClinicAppointment, Closure } from './types'
 
-interface CreateResult {
+/** schedule-service `ClosureResult` */
+interface ClosureResult {
   id: string
   date: string
-  bookings_to_reschedule: { booking_number: string; doctor: string; start_at: string; patient: string }[]
+  blocked: number
+  bookings_to_reschedule: { slot_id: string; start_at: string; booking_id: string | null }[] | null
+}
+
+/** Ko'chirilishi kerak bo'lgan bron — nomlar booking-service'dagi kun ro'yxatidan */
+interface Reschedule {
+  key: string
+  start_at: string
+  number: string
+  patient: string
+  doctor: string
+}
+
+interface CreateResult {
+  date: string
+  bookings: Reschedule[]
 }
 
 export default function Closures() {
   const { capi, clinicId } = useClinic()
+  const lookup = useClinicLookup()
   const qc = useQueryClient()
   const toast = useToast()
   const [open, setOpen] = useState(false)
@@ -26,12 +43,25 @@ export default function Closures() {
   const q = useQuery({ queryKey: ['clinic', clinicId, 'closures'], queryFn: () => capi<Closure[]>('/clinic/closures') })
 
   const create = useMutation({
-    mutationFn: () => capi<CreateResult>('/clinic/closures', { method: 'POST', body: { date, reason: reason.trim() } }),
+    mutationFn: async (): Promise<CreateResult> => {
+      const r = await capi<ClosureResult>('/clinic/closures', { method: 'POST', body: { date, reason: reason.trim() } })
+      const slots = r.bookings_to_reschedule ?? []
+      if (!slots.length) return { date: r.date, bookings: [] }
+      const appts = await capi<ClinicAppointment[]>('/clinic/appointments', { query: { date: r.date } }).catch(() => [])
+      const byId = new Map(appts.map((a) => [a.id, a]))
+      return {
+        date: r.date,
+        bookings: slots.map((s) => {
+          const a = s.booking_id ? byId.get(s.booking_id) : undefined
+          return { key: s.slot_id, start_at: s.start_at, number: a?.number ?? '', patient: a?.patient.full_name || 'Bemor', doctor: a ? lookup.doctorName(a.doctor_id) : '' }
+        }),
+      }
+    },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['clinic', clinicId] })
       setOpen(false)
       setReason('')
-      if (r.bookings_to_reschedule?.length) setCreated(r)
+      if (r.bookings.length) setCreated(r)
       else toast.success(`${dateLong(r.date)} dam olish kuni qilib belgilandi`)
     },
     onError: (e) => toast.error(e),
@@ -129,14 +159,14 @@ export default function Closures() {
         {created && (
           <div className="space-y-3">
             <p className="text-sm text-ink-600">
-              {dateLong(created.date)} dam olish kuni qilindi. Shu kunda <b>{created.bookings_to_reschedule.length}</b> ta tasdiqlangan bron bor — mijozlarga qo'ng'iroq qilib, boshqa kunga ko'chiring.
+              {dateLong(created.date)} dam olish kuni qilindi. Shu kunda <b>{created.bookings.length}</b> ta tasdiqlangan bron bor — mijozlarga qo'ng'iroq qilib, boshqa kunga ko'chiring.
             </p>
             <ul className="divide-y divide-ink-100 rounded-2xl ring-1 ring-ink-100">
-              {created.bookings_to_reschedule.map((b) => (
-                <li key={b.booking_number} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+              {created.bookings.map((b) => (
+                <li key={b.key} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                   <div>
                     <div className="font-semibold text-ink-900">{b.patient}</div>
-                    <div className="text-ink-500">{b.doctor} · {b.booking_number}</div>
+                    <div className="text-ink-500">{[b.doctor, b.number].filter(Boolean).join(' · ')}</div>
                   </div>
                   <span className="whitespace-nowrap font-semibold text-ink-700">{relativeDateTime(b.start_at)}</span>
                 </li>

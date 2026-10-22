@@ -7,7 +7,7 @@ import { Badge, Button, EmptyState, ErrorState, Field, Input, ListSkeleton, Moda
 import { useClinic } from './ctx'
 import type { Room } from './types'
 
-type Draft = Omit<Room, 'id'> & { id?: string }
+type Draft = Omit<Room, 'id' | 'clinic_id'> & { id?: string }
 const EMPTY: Draft = { name: '', floor: '', equipment: [], is_active: true }
 
 export default function Rooms() {

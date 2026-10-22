@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BellRing, Building2, House, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useDoctors } from '@/lib/queries'
 import { dateShort } from '@/lib/format'
 import { useToast } from '@/lib/toast'
 import type { WaitlistEntry } from '@/lib/types'
@@ -18,9 +19,10 @@ const STATUS: Record<string, { l: string; t: 'green' | 'blue' | 'gray' | 'amber'
 export default function WaitlistPage() {
   const qc = useQueryClient()
   const toast = useToast()
-  const q = useQuery({ queryKey: ['waitlist'], queryFn: () => api<WaitlistEntry[]>('/booking/waitlist') })
+  const q = useQuery({ queryKey: ['waitlist'], queryFn: () => api<WaitlistEntry[]>('/waitlist') })
+  const docs = useDoctors((q.data ?? []).map((w) => w.doctor_id))
   const del = useMutation({
-    mutationFn: (id: string) => api(`/booking/waitlist/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api(`/waitlist/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['waitlist'] })
       toast.success('Navbatdan chiqdingiz')
@@ -43,11 +45,12 @@ export default function WaitlistPage() {
         <div className="space-y-3">
           {q.data.map((w) => {
             const st = STATUS[w.status] ?? { l: w.status, t: 'gray' as const }
+            const doctorName = docs.byId.get(w.doctor_id)?.full_name ?? 'Shifokor'
             return (
               <div key={w.id} className="card flex flex-wrap items-center gap-4 p-5">
-                <Avatar name={w.doctor_name.replace(/^Dr\.?\s*/, '')} size={48} />
+                <Avatar name={doctorName.replace(/^Dr\.?\s*/, '')} size={48} />
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold text-ink-900">{w.doctor_name}</div>
+                  <div className="font-bold text-ink-900">{doctorName}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-500">
                     <Badge tone={st.t} dot>{st.l}</Badge>
                     <span className="inline-flex items-center gap-1">{w.place === 'home' ? <House className="h-3.5 w-3.5" /> : <Building2 className="h-3.5 w-3.5" />}{w.place === 'home' ? 'Uyda' : 'Klinikada'}</span>

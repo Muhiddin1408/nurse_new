@@ -3,13 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Clock, History, Home, Info, MapPin, Pencil, Plus, Stethoscope, Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { useToast } from '@/lib/toast'
-import { dateShort, minutes, money } from '@/lib/format'
+import { dateShort, minutes, money, tiyinToInput, toTiyin } from '@/lib/format'
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, ListSkeleton, Modal, PageHeader, Segmented, Select, Skeleton, Textarea, Toggle, cx } from '@/components/ui'
 import { useDoctorProfile, useSpecs, type ServiceRead } from './shared'
 
 interface PriceHistory {
-  old_price: string
-  new_price: string
+  old_price_tiyin: number
+  new_price_tiyin: number
   is_large_change: boolean
   created_at: string
 }
@@ -25,7 +25,7 @@ export default function ServicesPage() {
   const [form, setForm] = useState<Form | null>(null)
   const [origPrice, setOrigPrice] = useState<string | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [large, setLarge] = useState<null | { old_price: string; new_price: string }>(null)
+  const [large, setLarge] = useState<null | { old_price_tiyin: number; new_price_tiyin: number }>(null)
   const [del, setDel] = useState<ServiceRead | null>(null)
   const [historyFor, setHistoryFor] = useState<ServiceRead | null>(null)
 
@@ -44,7 +44,8 @@ export default function ServicesPage() {
         description: f.description.trim(),
         place: f.place,
         duration_minutes: Number(f.duration_minutes),
-        price: f.price.replace(/\s/g, ''),
+        // Forma — so'mda, API — tiyinda (ADR-0007)
+        price_tiyin: toTiyin(f.price),
         specialization_id: f.specialization_id,
       }
       if (confirm) body.confirm_large_change = true
@@ -57,9 +58,9 @@ export default function ServicesPage() {
       invalidate()
     },
     onError: (e) => {
-      if (e instanceof ApiError && e.status === 409 && (e.data as { code?: string })?.code === 'large_price_change') {
-        const d = e.data as { old_price: string; new_price: string }
-        setLarge({ old_price: d.old_price, new_price: d.new_price })
+      if (e instanceof ApiError && e.status === 409 && e.code === 'LARGE_PRICE_CHANGE') {
+        const d = (e.data as { detail: { old_price_tiyin: number; new_price_tiyin: number } }).detail
+        setLarge({ old_price_tiyin: d.old_price_tiyin, new_price_tiyin: d.new_price_tiyin })
         return
       }
       if (e instanceof ApiError) setErrors(e.fields)
@@ -68,7 +69,7 @@ export default function ServicesPage() {
   })
 
   const toggle = useMutation({
-    mutationFn: (s: ServiceRead) => api<ServiceRead>(`/doctor/services/${s.id}/toggle`, { method: 'PATCH' }),
+    mutationFn: (s: ServiceRead) => api<ServiceRead>(`/doctor/services/${s.id}`, { method: 'PATCH', body: { is_active: !s.is_active } }),
     onSuccess: (s) => {
       toast.success(s.is_active ? 'Xizmat yoqildi' : "Xizmat o'chirildi — mijozlarga ko'rinmaydi")
       invalidate()
@@ -152,7 +153,7 @@ export default function ServicesPage() {
             {s.description && <p className="mt-2 line-clamp-2 text-sm text-ink-500">{s.description}</p>}
             <div className="mt-4 flex items-end justify-between">
               <div>
-                <div className="text-xl font-extrabold text-ink-900">{money(s.price)}</div>
+                <div className="text-xl font-extrabold text-ink-900">{money(s.price_tiyin)}</div>
                 <div className="flex items-center gap-1 text-sm text-ink-500">
                   <Clock className="h-3.5 w-3.5" /> {minutes(s.duration_minutes)}
                 </div>
@@ -166,8 +167,8 @@ export default function ServicesPage() {
                   title="Tahrirlash"
                   onClick={() => {
                     setErrors({})
-                    setOrigPrice(s.price)
-                    setForm({ id: s.id, name: s.name, name_ru: s.name_ru, description: s.description, place: s.place === 'home' ? 'home' : 'clinic', duration_minutes: s.duration_minutes, price: s.price.replace(/\.00$/, ''), specialization_id: s.specialization_id })
+                    setOrigPrice(tiyinToInput(s.price_tiyin))
+                    setForm({ id: s.id, name: s.name, name_ru: s.name_ru, description: s.description, place: s.place === 'home' ? 'home' : 'clinic', duration_minutes: s.duration_minutes, price: tiyinToInput(s.price_tiyin), specialization_id: s.specialization_id })
                   }}
                 >
                   <Pencil className="h-4 w-4" />
@@ -228,10 +229,10 @@ export default function ServicesPage() {
             <Field label="Davomiyligi (daq) *" error={errors.duration_minutes}>
               <Input type="number" min={5} step={5} value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} />
             </Field>
-            <Field label="Narxi (so'm) *" error={errors.price} className="sm:col-span-2">
+            <Field label="Narxi (so'm) *" error={errors.price_tiyin} className="sm:col-span-2">
               <Input inputMode="numeric" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value.replace(/[^\d.]/g, '') })} placeholder="150000" />
             </Field>
-            {form.id && origPrice && form.price && form.price !== origPrice.replace(/\.00$/, '') && (
+            {form.id && origPrice && form.price && form.price !== origPrice && (
               <div className="flex gap-2 rounded-2xl bg-sky-50 p-3 text-sm text-sky-800 sm:col-span-2">
                 <Info className="h-4 w-4 shrink-0" />
                 Yangi narx faqat yangi bronlarga ta'sir qiladi — mavjud bronlar eski narxda qoladi.
@@ -251,7 +252,7 @@ export default function ServicesPage() {
         loading={save.isPending}
         title="Narx keskin oshmoqda"
         confirmText="Ha, tasdiqlayman"
-        text={large ? `Narx ${money(large.old_price)} dan ${money(large.new_price)} ga — 50% dan ko'proq oshmoqda. Bu mijozlar sonini kamaytirishi mumkin. Davom etasizmi?` : ''}
+        text={large ? `Narx ${money(large.old_price_tiyin)} dan ${money(large.new_price_tiyin)} ga — 50% dan ko'proq oshmoqda. Bu mijozlar sonini kamaytirishi mumkin. Davom etasizmi?` : ''}
       />
 
       <ConfirmDialog
@@ -277,14 +278,14 @@ function PriceHistoryModal({ service, onClose }: { service: ServiceRead | null; 
     enabled: !!service,
   })
   const points = [...(q.data ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at))
-  const series = points.length ? [{ v: Number(points[0].old_price), d: '' }, ...points.map((p) => ({ v: Number(p.new_price), d: p.created_at }))] : []
+  const series = points.length ? [{ v: points[0].old_price_tiyin, d: '' }, ...points.map((p) => ({ v: p.new_price_tiyin, d: p.created_at }))] : []
   const max = Math.max(1, ...series.map((s) => s.v))
 
   return (
     <Modal open={!!service} onClose={onClose} title={service ? `Narx tarixi — ${service.name}` : ''}>
       {q.isLoading && <Skeleton className="h-40" />}
       {q.isError && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
-      {q.data && points.length === 0 && <EmptyState icon={<History className="h-7 w-7" />} title="Narx o'zgarmagan" text={`Joriy narx: ${money(service?.price)}`} />}
+      {q.data && points.length === 0 && <EmptyState icon={<History className="h-7 w-7" />} title="Narx o'zgarmagan" text={`Joriy narx: ${money(service?.price_tiyin)}`} />}
       {points.length > 0 && (
         <>
           <div className="flex h-40 items-end gap-2 rounded-2xl bg-ink-50 p-4">
@@ -301,7 +302,7 @@ function PriceHistoryModal({ service, onClose }: { service: ServiceRead | null; 
               <div key={i} className="flex items-center justify-between py-2.5 text-sm">
                 <span className="text-ink-500">{dateShort(p.created_at)}</span>
                 <span>
-                  <span className="text-ink-400 line-through">{money(p.old_price)}</span> → <b className="text-ink-900">{money(p.new_price)}</b>
+                  <span className="text-ink-400 line-through">{money(p.old_price_tiyin)}</span> → <b className="text-ink-900">{money(p.new_price_tiyin)}</b>
                   {p.is_large_change && <Badge tone="amber" className="ml-2">+50%</Badge>}
                 </span>
               </div>

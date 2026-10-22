@@ -1,7 +1,9 @@
+import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2, CalendarDays, ClipboardList, LayoutDashboard, MessageSquareQuote, Stethoscope, UserRound, Wallet } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { useToast } from '@/lib/toast'
 import { PanelLayout, type PanelNavItem } from '@/components/layout/PanelLayout'
 import { Button, ErrorState, Spinner } from '@/components/ui'
@@ -41,7 +43,7 @@ export default function DoctorApp() {
   }
 
   const s = status.data!
-  if (s.status === 'approved') return <ApprovedCabinet />
+  if (s.status === 'approved') return <DoctorRoleGate><ApprovedCabinet /></DoctorRoleGate>
   if (s.status === 'pending') return <StatusScreen status={s} />
   if (s.status === 'suspended')
     return (
@@ -78,6 +80,40 @@ function ApprovedCabinet() {
         <Route path="*" element={<Navigate to="/doctor" replace />} />
       </Route>
     </Routes>
+  )
+}
+
+/**
+ * Tasdiqlangan shifokor: `doctor` roli moderatsiyadan keyin event orqali beriladi (catalog → auth), token esa
+ * eski bo'lishi mumkin — sessiya yangilanadi va `doctor` rejimiga o'tiladi (kabinet endpointlari shu rolni talab qiladi).
+ */
+function DoctorRoleGate({ children }: { children: ReactNode }) {
+  const { user, refreshUser, switchRole } = useAuth()
+  const toast = useToast()
+  const ready = user?.active_role === 'doctor'
+  const sync = useQuery({
+    queryKey: ['doctor', 'role-sync', user?.id],
+    enabled: !ready,
+    retry: 3,
+    retryDelay: 2000,
+    queryFn: async () => {
+      const u = user?.available_roles.includes('doctor') ? user : await refreshUser()
+      if (!u?.available_roles.includes('doctor')) throw new Error("Rol hali berilmagan — bir necha soniyadan keyin qayta urinib ko'ring")
+      await switchRole('doctor')
+      return true
+    },
+  })
+  if (ready) return <>{children}</>
+  if (sync.isError)
+    return (
+      <OnboardingShell>
+        <ErrorState error={sync.error} onRetry={() => sync.refetch().catch((e) => toast.error(e))} />
+      </OnboardingShell>
+    )
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner className="h-8 w-8" />
+    </div>
   )
 }
 

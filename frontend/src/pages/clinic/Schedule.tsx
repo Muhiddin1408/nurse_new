@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { CalendarClock } from 'lucide-react'
 import { time, todayISO, tz } from '@/lib/format'
 import { Avatar, EmptyState, ErrorState, PageHeader, Skeleton, cx } from '@/components/ui'
-import { useClinic } from './ctx'
+import { useClinic, useClinicLookup } from './ctx'
 import { BLOCK_REASON, DateNav, SLOT_STATUS } from './shared'
-import type { ScheduleColumn } from './types'
+import type { ScheduleColumn, ScheduleSlot } from './types'
 
 const PX_PER_MIN = 1.7
 
@@ -16,12 +16,20 @@ function minuteOfDay(iso: string) {
 
 export default function Schedule() {
   const { capi, clinicId } = useClinic()
+  const lookup = useClinicLookup()
   const [date, setDate] = useState(todayISO())
-  const q = useQuery({
+  // schedule-service: `{date, doctors: {doctor_id: [slot]}}` → shifokor ustunlari (ism — klinika shifokorlari ro'yxatidan)
+  const raw = useQuery({
     queryKey: ['clinic', clinicId, 'schedule', date],
-    queryFn: () => capi<ScheduleColumn[]>('/clinic/schedule', { query: { date } }),
+    queryFn: () => capi<{ date: string; doctors: Record<string, ScheduleSlot[]> }>('/clinic/schedule', { query: { date } }),
     placeholderData: (prev) => prev,
   })
+  const q = {
+    ...raw,
+    data: raw.data
+      ? Object.entries(raw.data.doctors).map(([doctor_id, slots]): ScheduleColumn => ({ doctor_id, doctor: lookup.doctorName(doctor_id) || 'Shifokor', slots }))
+      : undefined,
+  }
 
   const cols = useMemo(() => (q.data ?? []).filter((c) => c.slots.length > 0), [q.data])
   const range = useMemo(() => {
@@ -106,7 +114,7 @@ export default function Schedule() {
                       const top = (minuteOfDay(s.start_at) - range.start) * PX_PER_MIN
                       const h = Math.max(18, ((minuteOfDay(s.end_at) || 24 * 60) - minuteOfDay(s.start_at)) * PX_PER_MIN - 3)
                       const st = SLOT_STATUS[s.status] ?? SLOT_STATUS.free
-                      const title = [`${time(s.start_at)}–${time(s.end_at)}`, st.label, s.block_reason && BLOCK_REASON[s.block_reason], s.room].filter(Boolean).join(' · ')
+                      const title = [`${time(s.start_at)}–${time(s.end_at)}`, st.label, s.block_reason && BLOCK_REASON[s.block_reason], lookup.roomName(s.room_id)].filter(Boolean).join(' · ')
                       return (
                         <div
                           key={s.slot_id}
@@ -115,7 +123,7 @@ export default function Schedule() {
                           style={{ top: top + 1.5, height: h }}
                         >
                           <div className="font-bold tabular-nums">{time(s.start_at)}</div>
-                          {h > 34 && <div className="truncate opacity-80">{s.block_reason ? BLOCK_REASON[s.block_reason] ?? st.label : s.room ?? st.label}</div>}
+                          {h > 34 && <div className="truncate opacity-80">{s.block_reason ? BLOCK_REASON[s.block_reason] ?? st.label : lookup.roomName(s.room_id) ?? st.label}</div>}
                         </div>
                       )
                     })}

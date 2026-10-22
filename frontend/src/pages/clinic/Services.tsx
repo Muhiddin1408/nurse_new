@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Clock, Pencil, Plus, Tags, Trash2 } from 'lucide-react'
 import { ApiError } from '@/lib/api'
-import { money, minutes } from '@/lib/format'
+import { money, minutes, tiyinToInput, toTiyin } from '@/lib/format'
 import { useSpecializations } from '@/lib/queries'
 import { useToast } from '@/lib/toast'
 import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, Field, Input, ListSkeleton, Modal, PageHeader, Select, Textarea, cx } from '@/components/ui'
@@ -74,14 +74,14 @@ export default function Services() {
                 </div>
               </div>
               <div className="flex items-center justify-between gap-2 sm:justify-end">
-                <span className="text-lg font-extrabold tabular-nums text-ink-900">{money(s.price)}</span>
+                <span className="text-lg font-extrabold tabular-nums text-ink-900">{money(s.price_tiyin)}</span>
                 <div className="flex">
                   <Button
                     variant="ghost"
                     size="sm"
                     aria-label="Tahrirlash"
                     onClick={() =>
-                      setDraft({ id: s.id, specialization_id: s.specialization_id, name: s.name, name_ru: s.name_ru, description: s.description, duration_minutes: String(s.duration_minutes), price: s.price })
+                      setDraft({ id: s.id, specialization_id: s.specialization_id, name: s.name, name_ru: s.name_ru, description: s.description, duration_minutes: String(s.duration_minutes), price: tiyinToInput(s.price_tiyin) })
                     }
                   >
                     <Pencil className="h-4 w-4" />
@@ -117,7 +117,7 @@ function ServiceModal({ draft, onClose }: { draft: Draft; onClose: () => void })
   const toast = useToast()
   const specs = useSpecializations()
   const [d, setD] = useState<Draft>(draft)
-  const [large, setLarge] = useState<{ old_price: string; new_price: string } | null>(null)
+  const [large, setLarge] = useState<{ old_price_tiyin: number; new_price_tiyin: number } | null>(null)
 
   const save = useMutation({
     mutationFn: (confirm: boolean) => {
@@ -128,11 +128,10 @@ function ServiceModal({ draft, onClose }: { draft: Draft; onClose: () => void })
         description: d.description.trim(),
         place: 'clinic',
         duration_minutes: Number(d.duration_minutes),
-        price: d.price.replace(/\s/g, ''),
+        price_tiyin: toTiyin(d.price),
       }
       if (confirm) body.confirm_large_change = true
       if (d.id) return capi<ServiceRead>(`/clinic/services/${d.id}`, { method: 'PATCH', body })
-      if (clinicId) body.clinic_id = clinicId
       return capi<ServiceRead>('/clinic/services', { method: 'POST', body })
     },
     onSuccess: () => {
@@ -141,9 +140,9 @@ function ServiceModal({ draft, onClose }: { draft: Draft; onClose: () => void })
       onClose()
     },
     onError: (e) => {
-      if (e instanceof ApiError && e.status === 409 && (e.data as { code?: string })?.code === 'large_price_change') {
-        const data = e.data as { old_price: string; new_price: string }
-        setLarge({ old_price: data.old_price, new_price: data.new_price })
+      if (e instanceof ApiError && e.status === 409 && e.code === 'LARGE_PRICE_CHANGE') {
+        const { detail } = e.data as { detail: { old_price_tiyin: number; new_price_tiyin: number } }
+        setLarge({ old_price_tiyin: detail.old_price_tiyin, new_price_tiyin: detail.new_price_tiyin })
         return
       }
       toast.error(e)
@@ -184,7 +183,7 @@ function ServiceModal({ draft, onClose }: { draft: Draft; onClose: () => void })
             <Field label="Davomiyligi (daq)" error={fe.duration_minutes}>
               <Input type="number" min={5} step={5} value={d.duration_minutes} onChange={(e) => setD({ ...d, duration_minutes: e.target.value })} />
             </Field>
-            <Field label="Narxi (so'm)" error={fe.price} hint={d.id ? 'Faqat yangi bronlarga ta‘sir qiladi' : undefined}>
+            <Field label="Narxi (so'm)" error={fe.price_tiyin} hint={d.id ? 'Faqat yangi bronlarga ta‘sir qiladi' : undefined}>
               <Input inputMode="decimal" value={d.price} onChange={(e) => setD({ ...d, price: e.target.value.replace(/[^\d.]/g, '') })} placeholder="150000" />
             </Field>
           </div>
@@ -207,7 +206,7 @@ function ServiceModal({ draft, onClose }: { draft: Draft; onClose: () => void })
         <div className="flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-200">
           <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
-            Narx <b>{money(large?.old_price)}</b> dan <b>{money(large?.new_price)}</b> ga — 50% dan ko'proq oshmoqda. Bu faqat yangi bronlarga ta'sir qiladi. Davom etasizmi?
+            Narx <b>{money(large?.old_price_tiyin)}</b> dan <b>{money(large?.new_price_tiyin)}</b> ga — 50% dan ko'proq oshmoqda. Bu faqat yangi bronlarga ta'sir qiladi. Davom etasizmi?
           </div>
         </div>
       </ConfirmDialog>

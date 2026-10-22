@@ -202,8 +202,9 @@ export function RatingPill({ rating, count, isNew }: { rating: number | null | u
 }
 
 // ---- Money -----------------------------------------------------------------
-export function Money({ value, className, strike }: { value: string | number | null | undefined; className?: string; strike?: boolean }) {
-  return <span className={cx('tabular-nums', strike && 'text-ink-400 line-through', className)}>{money(value)}</span>
+/** Pul — tiyinda (API `*_tiyin`). */
+export function Money({ tiyin, className, strike }: { tiyin: number | null | undefined; className?: string; strike?: boolean }) {
+  return <span className={cx('tabular-nums', strike && 'text-ink-400 line-through', className)}>{money(tiyin)}</span>
 }
 
 // ---- Badges ----------------------------------------------------------------

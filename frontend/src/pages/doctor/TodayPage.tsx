@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth'
 import { dateLong, money, time, todayISO, weekday } from '@/lib/format'
 import { Avatar, Button, EmptyState, ErrorState, ListSkeleton, Stat, StatusBadge, cx } from '@/components/ui'
 import { AppointmentActions, AppointmentDetailModal, addressLine, patientLine } from './appointments-ui'
-import { APPT_STATUS, type Appointment, type Summary } from './shared'
+import { APPT_STATUS, type Appointment, type Summary, useClinicName } from './shared'
 
 function useNow(ms = 30_000) {
   const [now, setNow] = useState(() => Date.now())
@@ -35,6 +35,7 @@ function greeting() {
 }
 
 export default function TodayPage() {
+  const clinicName = useClinicName()
   const { user } = useAuth()
   const now = useNow()
   const [openId, setOpenId] = useState<string | null>(null)
@@ -46,7 +47,7 @@ export default function TodayPage() {
   })
   const earn = useQuery({
     queryKey: ['doctor', 'earnings', 'summary', 'today'],
-    queryFn: () => api<Summary>('/doctor/earnings/summary', { query: { period: 'today' } }),
+    queryFn: () => api<Summary>('/doctor/earnings', { query: { period: 'today' } }),
   })
 
   const list = useMemo(() => [...(q.data ?? [])].sort((a, b) => a.start_at.localeCompare(b.start_at)), [q.data])
@@ -86,7 +87,7 @@ export default function TodayPage() {
               </div>
               <div className="mt-2 text-lg font-bold">{next.patient.full_name}</div>
               <div className="text-sm text-white/70">
-                {time(next.start_at)} · {next.services.map((s) => s.name).join(', ')}
+                {time(next.start_at)} · {next.services.map((s) => s.service_name).join(', ')}
               </div>
             </motion.button>
           )}
@@ -97,7 +98,7 @@ export default function TodayPage() {
         <Stat label="Bugungi qabullar" value={q.data ? list.filter((a) => a.status !== 'cancelled').length : '—'} icon={<CalendarDays className="h-5 w-5" />} />
         <Stat label="Yakunlangan" value={q.data ? done : '—'} icon={<CheckCircle2 className="h-5 w-5" />} tone="sky" />
         <Stat label="Kutilmoqda" value={q.data ? left : '—'} icon={<CalendarClock className="h-5 w-5" />} tone="amber" />
-        <Stat label="Bugungi daromad" value={earn.data ? money(earn.data.net) : '—'} icon={<Wallet className="h-5 w-5" />} tone="violet" hint={earn.data ? `${earn.data.bookings_count} ta qabuldan` : undefined} />
+        <Stat label="Bugungi daromad" value={earn.data ? money(earn.data.net_tiyin) : '—'} icon={<Wallet className="h-5 w-5" />} tone="violet" hint={earn.data ? `${earn.data.bookings_count} ta qabuldan` : undefined} />
       </div>
 
       <div className="card p-4 sm:p-6">
@@ -168,10 +169,10 @@ export default function TodayPage() {
                             {patientLine(a)}
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-600">
-                            <span>{a.services.map((s) => s.name).join(', ')}</span>
+                            <span>{a.services.map((s) => s.service_name).join(', ')}</span>
                             <span className="flex items-center gap-1 text-ink-500">
                               {a.place === 'home' ? <Home className="h-3.5 w-3.5 text-violet-500" /> : <MapPin className="h-3.5 w-3.5 text-sky-500" />}
-                              {a.place === 'home' ? addressLine(a) || 'Uyga chaqiruv' : a.clinic?.name}
+                              {a.place === 'home' ? addressLine(a) || 'Uyga chaqiruv' : clinicName(a.clinic_id)}
                             </span>
                           </div>
                         </div>

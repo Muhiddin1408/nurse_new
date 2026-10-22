@@ -8,19 +8,20 @@ import { useToast } from '@/lib/toast'
 import { Button } from '@/components/ui'
 
 export default function ForDoctorsPage() {
-  const { isAuthed, user, switchRole, updateUser } = useAuth()
+  const { isAuthed, user, switchRole } = useAuth()
   const nav = useNavigate()
   const toast = useToast()
 
-  // Shifokor roli onboarding/start bilan paydo bo'ladi (api/doctor/onboarding.py)
+  // Ariza (onboarding) istalgan akkauntdan boshlanadi; `doctor` roli moderator TASDIQLAGANDAN keyin beriladi
+  // (catalog `doctor.approved` → auth). Tasdiqlangan shifokor — kabinetga, rejim almashtirib.
   const start = useMutation({
     mutationFn: async () => {
-      if (user?.available_roles.includes('doctor')) return
+      if (user?.available_roles.includes('doctor')) return true
       await api('/doctor/onboarding/start', { method: 'POST' })
-      updateUser({ available_roles: [...(user?.available_roles ?? ['client']), 'doctor'] })
+      return false
     },
-    onSuccess: async () => {
-      await switchRole('doctor')
+    onSuccess: async (approved) => {
+      if (approved && user?.active_role !== 'doctor') await switchRole('doctor')
       nav('/doctor')
     },
     onError: (e) => toast.error(e),

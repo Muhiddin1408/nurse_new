@@ -23,7 +23,7 @@ export function PatientForm({ initial, onSaved }: { initial?: Patient; onSaved: 
   const m = useMutation({
     mutationFn: () => {
       const body = { ...f, full_name: f.full_name.trim(), weight_kg: f.weight_kg ? Number(f.weight_kg) : null }
-      return initial ? api<Patient>(`/patient/patients/${initial.id}/`, { method: 'PATCH', body }) : api<Patient>('/patient/patients/', { method: 'POST', body })
+      return initial ? api<Patient>(`/users/me/patients/${initial.id}`, { method: 'PATCH', body }) : api<Patient>('/users/me/patients', { method: 'POST', body })
     },
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: ['patients'] })
@@ -117,7 +117,7 @@ export function AddressForm({ initial, onSaved }: { initial?: Address; onSaved: 
   const m = useMutation({
     mutationFn: () => {
       const body = { ...f, street: f.street.trim() }
-      return initial ? api<Address>(`/patient/addresses/${initial.id}/`, { method: 'PATCH', body }) : api<Address>('/patient/addresses/', { method: 'POST', body })
+      return initial ? api<Address>(`/users/me/addresses/${initial.id}`, { method: 'PATCH', body }) : api<Address>('/users/me/addresses', { method: 'POST', body })
     },
     onSuccess: (a) => {
       qc.invalidateQueries({ queryKey: ['addresses'] })

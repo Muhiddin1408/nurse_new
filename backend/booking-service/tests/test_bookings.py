@@ -472,6 +472,7 @@ def test_admin_and_clinic_views(client: Client, fakes: FakeDeps, db, admin_keys,
     h = bearer(mint_user_token(user_keys, user_id=clinic_admin, roles=["client", "clinic_admin"]))
     rows = api.get(f"/v1/clinic/{CLINIC}/appointments", params={"date": day}, headers=h).json()
     assert [r["id"] for r in rows] == [b["id"]]
+    assert rows[0]["doctor_id"] == str(DOCTOR)  # klinika ko'rinishida — qaysi shifokor
 
 
 def test_internal_endpoints(client: Client, fakes: FakeDeps, api) -> None:

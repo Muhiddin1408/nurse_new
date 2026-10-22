@@ -101,6 +101,8 @@ class AppointmentOut(BaseModel):
     number: str
     status: str
     place: str
+    # Klinika ko'rinishida qaysi shifokor (ism — catalog'dan, frontend keshi)
+    doctor_id: UUID
     start_at: datetime
     end_at: datetime
     clinic_id: UUID | None
