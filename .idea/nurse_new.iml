@@ -5,21 +5,6 @@
       <sourceFolder url="file://$MODULE_DIR$/api" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/apps" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/admin-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/analytics-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/auth-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/billing-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/booking-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/catalog-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/dispute-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/file-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/notification-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/payment-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/pricing-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/review-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/search-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/backend/user-service/.venv" />
-      <excludeFolder url="file://$MODULE_DIR$/libs/py-common/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/venv" />
     </content>
     <orderEntry type="jdk" jdkName="~/PycharmProjects/nurse_new/venv" jdkType="Python SDK" />
