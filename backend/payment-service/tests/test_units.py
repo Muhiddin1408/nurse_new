@@ -69,3 +69,33 @@ def test_registry_parser() -> None:
         reconciliation.parse_registry("id,amount,state\nA,x,2\n")
     frm, to = reconciliation.day_window_ms(reconciliation.yesterday())
     assert to - frm == 24 * 3600 * 1000 - 1
+
+
+# --- prod fail-closed: provayder kalitlari ------------------------------------------------------------------
+
+
+def _prod(**kw):
+    from app.core.config import Settings
+
+    blank = {k: "" for k in ("payme_merchant_id", "payme_allowed_ips", "click_service_id", "click_merchant_id",
+                             "click_merchant_user_id", "click_allowed_ips")}
+    blank |= {"payme_secret_key": None, "click_secret_key": None}
+    # `.env` / muhitdagi lokal kalitlar aralashmasin
+    return Settings(_env_file=None, environment="prod", database_url="postgresql+asyncpg://u:p@db/x", **(blank | kw))
+
+
+PAYME_OK = {"payme_merchant_id": "m", "payme_secret_key": "k", "payme_allowed_ips": "185.234.113.1"}
+
+
+def test_prod_requires_some_provider():
+    with pytest.raises(ValueError, match="hech bir"):
+        _prod()
+
+
+def test_prod_rejects_half_configured_provider():
+    with pytest.raises(ValueError, match="PAYME_ALLOWED_IPS"):
+        _prod(payme_merchant_id="m", payme_secret_key="k")
+
+
+def test_prod_accepts_one_full_provider():
+    assert _prod(**PAYME_OK).payme_ips == {"185.234.113.1"}

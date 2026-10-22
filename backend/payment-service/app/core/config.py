@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 
 from medbron_common.config import ServiceSettings
 
@@ -47,6 +47,37 @@ class Settings(ServiceSettings):
     payme_transaction_timeout_hours: int = 12
     # Nizoda dalil — provayder so'rov/javob jurnali shuncha saqlanadi
     provider_log_retention_days: int = 365
+
+    @model_validator(mode="after")
+    def _prod_provider_keys(self) -> Settings:
+        """Prod — fail-closed: yarim sozlangan provayder yoki IP allowlist'siz webhook bilan ishga tushmaydi."""
+        if not self.is_prod:
+            return self
+        providers = {
+            "payme": {
+                "PAYME_MERCHANT_ID": self.payme_merchant_id,
+                "PAYME_SECRET_KEY": self.payme_secret_key and self.payme_secret_key.get_secret_value(),
+                "PAYME_ALLOWED_IPS": self.payme_allowed_ips.strip(),
+            },
+            "click": {
+                "CLICK_SERVICE_ID": self.click_service_id,
+                "CLICK_MERCHANT_ID": self.click_merchant_id,
+                "CLICK_MERCHANT_USER_ID": self.click_merchant_user_id,
+                "CLICK_SECRET_KEY": self.click_secret_key and self.click_secret_key.get_secret_value(),
+                "CLICK_ALLOWED_IPS": self.click_allowed_ips.strip(),
+            },
+        }
+        enabled = 0
+        for name, fields in providers.items():
+            missing = [k for k, v in fields.items() if not v]
+            if len(missing) == len(fields):
+                continue
+            if missing:
+                raise ValueError(f"prod: {name} yarim sozlangan — yetishmaydi: {', '.join(missing)}")
+            enabled += 1
+        if not enabled:
+            raise ValueError("prod: hech bir to'lov provayderi sozlanmagan (PAYME_* yoki CLICK_*)")
+        return self
 
     @property
     def payme_ips(self) -> frozenset[str]:

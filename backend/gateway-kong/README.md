@@ -37,3 +37,17 @@ python manage.py runserver 0.0.0.0:8099       # monolit (repo ildizida)
 ```
 Konfiguratsiyani tekshirish: `docker run --rm -e KONG_DATABASE=off -v $PWD/kong.dev.yml:/k.yml kong:3.9.1 kong config parse /k.yml`.
 `kong.prod.yml` (TLS, provayder IP allowlist, qat'iy limitlar) — 6-bosqich.
+
+## Prod (6-bosqich)
+
+`kong.prod.yml` qo'lda yozilmaydi — `kong.dev.yml` dan yasaladi (git'ga kirmaydi):
+
+```bash
+KONG_PUBLIC_ORIGINS=https://medbron.uz KONG_REDIS_HOST=redis \
+PAYME_WEBHOOK_IPS=... CLICK_WEBHOOK_IPS=... python3 render_prod.py > kong.prod.yml
+docker run --rm -e KONG_DATABASE=off -v $PWD/kong.prod.yml:/k.yml:ro kong:3.9.1 kong config parse /k.yml
+KONG_ENV=prod KONG_ADMIN_LISTEN=off KONG_REDIS_PASSWORD=... KONG_TRUSTED_IPS=<LB CIDR> docker compose up -d
+```
+
+Farqlar: monolit yo'q, rate-limit Redis'da, Payme/Click webhook'lari IP allowlist bilan, CORS faqat prod domen.
+Env yetishmasa skript xato beradi va fayl yozmaydi (fail-closed).
